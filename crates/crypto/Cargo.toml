@@ -1,0 +1,17 @@
+[package]
+name = "crypto"
+description = "Argon2id key derivation and XChaCha20-Poly1305 encryption for the Arsu vault"
+version = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+argon2 = { workspace = true }
+chacha20poly1305 = { workspace = true }
+ctutils = { workspace = true }
+getrandom = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+
+[lints]
+workspace = true

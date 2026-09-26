@@ -1,0 +1,24 @@
+[package]
+name = "storage"
+description = "Crash-safe vault and settings file storage for Arsu"
+version = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+crypto = { workspace = true }
+vault-core = { workspace = true }
+
+ctutils = { workspace = true }
+directories = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+otp = { workspace = true }
+uuid = { workspace = true }
+
+[lints]
+workspace = true

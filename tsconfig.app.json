@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "module": "ESNext",
+    "lib": ["ES2020", "DOM"],
+    "skipLibCheck": true,
+
+    /* Bundler mode */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    // Path aliases. This is the single source of truth: Vite (and Vitest) read
+    // it through `resolve.tsconfigPaths`, and ESLint's import resolver is
+    // pointed at this file.
+    "paths": {
+      "@api": ["./src/api/index.ts"],
+      "@api/*": ["./src/api/*"],
+      "@app-types/*": ["./src/types/*"],
+      "@cpt/*": ["./src/components/*"]
+    }
+  },
+  "include": ["src"]
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "What the main window may do: call the app's own commands and listen for the events the backend emits. No plugin commands at all: file dialogs and the clipboard are driven from Rust, which the capability system does not gate.",
+  "windows": ["main"],
+  "permissions": ["app-commands", "core:event:allow-listen", "core:event:allow-unlisten"]
+}

@@ -1,0 +1,56 @@
+# cargo-deny policy: advisories, licenses, banned crates and
+# allowed sources. Run with `cargo deny check`; CI runs it on every push.
+# Reference: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# Arsu ships for Linux only. Restricting the graph keeps crates that are
+# compiled solely for other platforms (Windows, macOS, mobile) out of every check.
+targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
+
+[advisories]
+# Vulnerable and unsound crates fail at any depth, and so do yanked versions.
+# Unmaintained crates fail when the workspace depends on them directly; the
+# transitive ones (today proc-macro-error via glib-macros and the unic-* crates
+# via tauri-utils' urlpattern) can only be replaced upstream in Tauri.
+unmaintained = "workspace"
+yanked = "deny"
+ignore = []
+
+[licenses]
+# Every dependency must be available under at least one of these licenses.
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "MIT",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Zlib",
+]
+
+[licenses.private]
+# The workspace crates are unpublished (`publish = false`) and carry no license
+# field of their own.
+ignore = true
+
+[bans]
+# Tauri's dependency tree has unavoidable duplicate versions; report them without
+# failing (the workspace also allows `clippy::multiple_crate_versions`).
+multiple-versions = "warn"
+wildcards = "deny"
+# Path dependencies between the (unpublished) workspace crates are not wildcards.
+allow-wildcard-paths = true
+deny = [
+  # The vault is fully offline: no HTTP client may enter the graph.
+  { crate = "reqwest", reason = "offline app: no HTTP client" },
+  { crate = "hyper", reason = "offline app: no HTTP client" },
+  { crate = "ureq", reason = "offline app: no HTTP client" },
+  # Cryptography is pure-Rust RustCrypto; no system OpenSSL.
+  { crate = "openssl-sys", reason = "crypto stays in the audited RustCrypto crates" },
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

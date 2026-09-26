@@ -1,0 +1,19 @@
+[package]
+name = "otp"
+description = "RFC 4226 HOTP and RFC 6238 TOTP code generation for Arsu"
+version = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+hmac = { workspace = true }
+serde = { workspace = true, optional = true }
+sha1 = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[features]
+serde = ["dep:serde"]
+
+[lints]
+workspace = true

@@ -1,0 +1,38 @@
+/*
+ * A scrolling region's edges fade out where there is more content past them
+ * (set by scrollFade), in place of a scrollbar. The fade is a mask, so it works
+ * over any background. Its size is a registered property so it can transition:
+ * the edge eases in as the region starts to scroll, instead of snapping.
+ */
+@property --scroll-fade-top {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --scroll-fade-bottom {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+
+.scroll-fade {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 var(--scroll-fade-top),
+    #000 calc(100% - var(--scroll-fade-bottom)),
+    transparent
+  );
+  transition:
+    --scroll-fade-top 150ms var(--ease-out-strong),
+    --scroll-fade-bottom 150ms var(--ease-out-strong);
+}
+
+.scroll-fade[data-more-above] {
+  --scroll-fade-top: 32px;
+}
+
+.scroll-fade[data-more-below] {
+  --scroll-fade-bottom: 32px;
+}

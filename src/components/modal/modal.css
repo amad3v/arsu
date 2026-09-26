@@ -1,0 +1,60 @@
+/*
+ * Modal enter and exit. Keyframes, not transitions: Ark's presence keeps a
+ * closing dialog mounted only while a CSS animation runs on it.
+ *
+ * Modals are occasional, so they get standard motion: in over 200 ms, out
+ * faster over 150 ms, both on the strong ease-out, scaling from the centre
+ * from 0.96 (never from 0). Reduced motion keeps the fade and drops the scale.
+ */
+
+.modal-backdrop[data-state='open'] {
+  animation: modal-fade-in 200ms var(--ease-out-strong);
+}
+
+.modal-backdrop[data-state='closed'] {
+  animation: modal-fade-out 150ms var(--ease-out-strong) forwards;
+}
+
+.modal-content[data-state='open'] {
+  animation: modal-pop-in 200ms var(--ease-out-strong);
+}
+
+.modal-content[data-state='closed'] {
+  animation: modal-pop-out 150ms var(--ease-out-strong) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modal-content[data-state='open'] {
+    animation-name: modal-fade-in;
+  }
+
+  .modal-content[data-state='closed'] {
+    animation-name: modal-fade-out;
+  }
+}
+
+@keyframes modal-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes modal-pop-out {
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}

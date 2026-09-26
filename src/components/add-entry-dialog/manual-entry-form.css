@@ -1,0 +1,39 @@
+/*
+ * The code settings unfold and fold (Ark's Collapsible sets --height to the
+ * content's height, and keeps the content mounted until the exit animation
+ * ends), so the dialog grows smoothly as they open instead of jumping. Under
+ * reduced motion they open and close at once.
+ */
+.code-settings {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .code-settings[data-state='open'] {
+    animation: code-settings-unfold 200ms var(--ease-out-strong);
+  }
+
+  .code-settings[data-state='closed'] {
+    animation: code-settings-fold 150ms var(--ease-out-strong);
+  }
+}
+
+@keyframes code-settings-unfold {
+  from {
+    height: 0;
+  }
+
+  to {
+    height: var(--height);
+  }
+}
+
+@keyframes code-settings-fold {
+  from {
+    height: var(--height);
+  }
+
+  to {
+    height: 0;
+  }
+}

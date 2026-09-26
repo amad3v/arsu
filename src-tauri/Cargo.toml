@@ -1,0 +1,33 @@
+[package]
+name = "arsu"
+description = "Offline TOTP/HOTP authenticator for the Linux desktop, with an encrypted local vault"
+license = "MIT"
+homepage = "https://github.com/amad3v/arsu"
+repository = "https://github.com/amad3v/arsu"
+version = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+
+[lib]
+# The `_lib` suffix keeps the library's name distinct from the binary's
+# (https://github.com/rust-lang/cargo/issues/8519).
+name = "arsu_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+cmd = { workspace = true }
+
+tauri = { workspace = true }
+tauri-plugin-single-instance = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { workspace = true, features = ["process"] }
+
+[lints]
+workspace = true

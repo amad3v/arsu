@@ -1,0 +1,99 @@
+[workspace]
+resolver = "3"
+members = [
+  "crates/cmd",
+  "crates/crypto",
+  "crates/interop",
+  "crates/otp",
+  "crates/vault-core",
+  "crates/qr",
+  "crates/storage",
+  "src-tauri",
+]
+
+[workspace.package]
+edition = "2024"
+publish = false
+version = "1.0.0"
+
+[workspace.dependencies]
+# internal
+cmd = { path = "crates/cmd" }
+crypto = { path = "crates/crypto" }
+interop = { path = "crates/interop" }
+otp = { path = "crates/otp", features = ["serde"] }
+vault-core = { path = "crates/vault-core" }
+storage = { path = "crates/storage" }
+qr = { path = "crates/qr" }
+
+# external
+aes-gcm = { version = "^0.11.1", default-features = false, features = ["aes", "zeroize"] }
+arboard = { version = "^3.6.1", default-features = false, features = ["wayland-data-control"] }
+argon2 = { version = "^0.6.0", default-features = false, features = ["alloc", "zeroize"] }
+base32 = { version = "^0.5.1" }
+base64 = { version = "^0.23.1" }
+chacha20poly1305 = { version = "^0.11.0", default-features = false, features = [
+  "alloc",
+  "zeroize",
+] }
+ciborium = { version = "^0.2.2" }
+ctutils = { version = "^0.4.2" }
+directories = { version = "^6.0.0" }
+getrandom = { version = "^0.4.3" }
+hex = { version = "^0.4.3" }
+hmac = { version = "^0.13.0", features = ["zeroize"] }
+pbkdf2 = { version = "^0.13.0", default-features = false, features = ["hmac"] }
+percent-encoding = { version = "^2.3.2" }
+qrcode = { version = "^0.14.1", default-features = false, features = ["svg"] }
+rustix = { version = "^1.1.5" }
+scrypt = { version = "^0.12.0" }
+serde = { version = "^1.0.229", features = ["derive"] }
+serde_bytes = { version = "^0.11.19" }
+serde_json = { version = "^1.0.151" }
+sha1 = { version = "^0.11.0" }
+sha2 = { version = "^0.11.0" }
+tauri = { version = "^2.11.5", features = [] }
+tauri-build = { version = "^2.6.3", features = [] }
+# Tauri 2 is built on GTK 3; this is the version it links.
+gtk = { version = "^0.18.2" }
+tauri-plugin-single-instance = { version = "^2.4.5" }
+tempfile = { version = "^3.27.0" }
+thiserror = { version = "^2.0.20" }
+uuid = { version = "^1.26.1", features = ["v7", "serde"] }
+zeroize = { version = "^1.9.0" }
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+branches_sharing_code = { level = "warn" }
+multiple_crate_versions = { level = "allow" }
+
+# Key-derivation and hashing crates are compiled optimized even in dev and
+# test builds, so debug builds can use the real (release) KDF cost instead
+# of a weakened one: unoptimized Argon2id is ~15x slower.
+[profile.dev.package.argon2]
+opt-level = 3
+
+[profile.dev.package.blake2]
+opt-level = 3
+
+[profile.dev.package.scrypt]
+opt-level = 3
+
+[profile.dev.package.salsa20]
+opt-level = 3
+
+[profile.dev.package.pbkdf2]
+opt-level = 3
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+# Read the optimization guideline for more details: https://tauri.app/concept/size/#cargo-configuration
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
+overflow-checks = true

@@ -1,0 +1,29 @@
+/*
+ * zag positions each toast only through custom properties on its root
+ * (--x, --y, --scale, --z-index, --height, --opacity); these rules apply them.
+ * Without them every toast sits at the same spot, covering the one before.
+ *
+ * Transitions, not keyframes, so a toast that moves again mid-flight (another
+ * arrives or leaves) retargets smoothly. Toasts are occasional, so they get
+ * standard motion: 250 ms on the strong ease-out, entering and leaving at the
+ * bottom edge. Only transform-type properties and opacity animate. Reduced
+ * motion keeps the fade and moves toasts instantly.
+ */
+.toast {
+  translate: var(--x) var(--y);
+  scale: var(--scale);
+  z-index: var(--z-index);
+  height: var(--height);
+  opacity: var(--opacity);
+  will-change: translate, scale, opacity;
+  transition:
+    translate 250ms var(--ease-out-strong),
+    scale 250ms var(--ease-out-strong),
+    opacity 200ms var(--ease-out-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    transition: opacity 200ms var(--ease-out-strong);
+  }
+}

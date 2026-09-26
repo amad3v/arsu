@@ -1,0 +1,81 @@
+/*
+ * The countdown bar drains once per code, linearly (constant motion), over the
+ * code's period; a negative delay starts it part-way when the code was fetched
+ * mid-step. Only its transform animates. Under reduced motion the bar is
+ * dropped and the seconds count down alone.
+ */
+.countdown-bar {
+  display: block;
+  height: 100%;
+  background-color: currentColor;
+  transform-origin: left center;
+  animation-name: countdown-drain;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+@keyframes countdown-drain {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown-track {
+    display: none;
+  }
+}
+
+/*
+ * The row a keyboard user is on: a bar at its leading edge as well as the
+ * tint, so the highlight is not told by colour alone. Keyboard-driven, so it
+ * moves instantly.
+ */
+.entry-row {
+  position: relative;
+  isolation: isolate;
+}
+
+.entry-row[data-highlighted]::before {
+  position: absolute;
+  inset-block: 6px;
+  inset-inline-start: 0;
+  width: 3px;
+  border-radius: 9999px;
+  background-color: var(--color-focus);
+  content: '';
+}
+
+/*
+ * A row just added or imported: tinted, then the tint fades out (opacity only)
+ * over the last part of --entry-new-duration, which the dashboard sets from
+ * the same constant that ends the "new" state.
+ */
+.entry-row[data-new]::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background-color: var(--color-success-bg);
+  content: '';
+  pointer-events: none;
+}
+
+.entry-row[data-new]::after,
+.entry-row [data-new-badge] {
+  animation: entry-new-fade var(--entry-new-duration) var(--ease-out-strong) both;
+}
+
+@keyframes entry-new-fade {
+  0%,
+  60% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}

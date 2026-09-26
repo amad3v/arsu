@@ -1,0 +1,19 @@
+[package]
+name = "qr"
+description = "Validated OTP accounts: otpauth:// URIs, QR codes and manual entry"
+version = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+otp = { workspace = true }
+vault-core = { workspace = true }
+
+base32 = { workspace = true }
+percent-encoding = { workspace = true }
+qrcode = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+
+[lints]
+workspace = true

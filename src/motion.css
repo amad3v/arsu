@@ -1,0 +1,11 @@
+/*
+ * Motion tokens shared by every animated component (modal, toasts).
+ * Enter and exit motion uses a strong ease-out: it starts fast, so the UI
+ * answers at once, and settles gently. CSS's built-in `ease-out` is too weak.
+ *
+ * Not named `--ease-out`: UnoCSS's wind4 preset defines that variable for its
+ * own `ease-out` utility, and whichever stylesheet loads last would win.
+ */
+:root {
+  --ease-out-strong: cubic-bezier(0.23, 1, 0.32, 1);
+}

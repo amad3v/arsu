@@ -1,0 +1,49 @@
+/*
+ * The selected tab's background slides to the tab chosen, as one element
+ * (Ark's Tabs.Indicator, which sets --left, --top, --width and --height, and
+ * transitions only between tabs, not on first paint). Under reduced motion it
+ * moves at once.
+ */
+.segment-indicator {
+  --transition-duration: 200ms;
+  --transition-timing-function: var(--ease-out-strong);
+
+  top: var(--top);
+  width: var(--width);
+  height: var(--height);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segment-indicator {
+    --transition-duration: 0ms;
+  }
+}
+
+/*
+ * Every tab's panel in one grid cell, so the area is as big as the biggest
+ * panel and switching tabs doesn't resize the dialog. The panels not shown
+ * keep their size but are invisible, which also takes them out of the tab
+ * order, pointer events and the accessibility tree.
+ */
+.segment-panels {
+  display: grid;
+}
+
+.segment-panels > [role='tabpanel'] {
+  grid-area: 1 / 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * Each tab's content fills its panel, so it can lay itself out to use the
+ * height (a growing text box, an action at the bottom), and an error takes
+ * its space from that room instead of growing the dialog.
+ */
+.segment-panels > [role='tabpanel'] > * {
+  flex: 1;
+}
+
+.segment-panels > [role='tabpanel']:not([data-selected]) {
+  visibility: hidden;
+}

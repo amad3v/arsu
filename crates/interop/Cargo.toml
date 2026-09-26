@@ -1,0 +1,29 @@
+[package]
+name = "interop"
+description = "Import from Aegis and 2FAS backups, and export to Aegis"
+version = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+qr = { workspace = true }
+vault-core = { workspace = true }
+
+aes-gcm = { workspace = true }
+base64 = { workspace = true }
+getrandom = { workspace = true }
+hex = { workspace = true }
+pbkdf2 = { workspace = true }
+scrypt = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true, features = ["raw_value"] }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+otp = { workspace = true }
+
+[lints]
+workspace = true

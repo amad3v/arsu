@@ -1,0 +1,32 @@
+# The app's own commands the main window may call: every command it
+# registers, and nothing else. `build.rs` generates the `allow-*`
+# permissions from the command list in `src/app_commands.rs`; a test in
+# `src/lib.rs` checks that this set grants exactly those commands.
+
+[[set]]
+identifier = "app-commands"
+description = "Every command of the app's own IPC surface (crates/cmd/src/commands.rs)."
+permissions = [
+  "allow-vault-exists",
+  "allow-create-vault",
+  "allow-unlock-vault",
+  "allow-lock-vault",
+  "allow-is-unlocked",
+  "allow-record-activity",
+  "allow-list-entries",
+  "allow-get-current-code",
+  "allow-copy-code",
+  "allow-add-entry-from-uri",
+  "allow-add-entry-manual",
+  "allow-delete-entry",
+  "allow-export-entry-qr",
+  "allow-pick-import-file",
+  "allow-import-file",
+  "allow-export-to-aegis-file",
+  "allow-pick-qr-image",
+  "allow-get-settings",
+  "allow-update-settings",
+  "allow-get-about-info",
+  "allow-copy-about-details",
+  "allow-open-link",
+]

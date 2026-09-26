@@ -1,0 +1,137 @@
+/*
+ * Colour tokens. Light is the default; `.dark` on <html> switches to dark. The
+ * settings store (components/settings) sets that class before the first paint,
+ * from the theme it cached at the last launch.
+ *
+ * Contrast (WCAG 2.2): text and muted text reach 4.5:1 on every surface they
+ * sit on, white button labels reach 4.5:1 on primary and danger, and the
+ * boundaries of form controls and the focus ring reach 3:1 against the
+ * surfaces around them. `border` is for decorative dividers only.
+ */
+:root {
+  color-scheme: light;
+
+  --color-bg-app: #f3f4f6; /* gray-100 */
+  --color-bg-card: #ffffff;
+  --color-bg-input: #ffffff;
+  --color-bg-selected: #eff6ff; /* blue-50: the row a keyboard user is on */
+  --color-bg-hover: #e5e7eb; /* gray-200: keyboard/mouse highlight and hover, visible against bg-card/bg-input's white */
+  --color-bg-pressed: #d1d5db; /* gray-300: a button held down */
+  --color-segment-track: #d1d5db; /* gray-300: a segmented control (the add dialog's tabs); muted text on it 5.1:1… */
+  --color-segment-thumb: #ffffff; /* …and its selected segment, 1.5:1 against the track, plus a shadow */
+
+  --color-text: #111827; /* gray-900 */
+  --color-text-muted: #4b5563; /* gray-600: 6.9:1 on bg-app */
+
+  --color-border: #e5e7eb; /* gray-200 */
+  --color-border-strong: #888d96; /* the lightest grey that still reaches 3:1 on bg-app (3.0:1; 3.3:1 on white) */
+  --color-focus: #2563eb; /* blue-600: 4.7:1 on bg-app */
+
+  --color-primary: #2563eb; /* blue-600: white text 5.2:1 */
+  --color-primary-hover: #1d4ed8; /* blue-700 */
+  --color-primary-pressed: #1e40af; /* blue-800 */
+  --color-danger: #e11d48; /* rose-600: white text 4.7:1 */
+  --color-danger-hover: #be123c; /* rose-700 */
+  --color-danger-pressed: #9f1239; /* rose-800 */
+  --color-warning: #b45309; /* amber-700: 4.6:1 on bg-app */
+
+  --color-success-bg: #f0fdf4;
+  --color-success-border: #bbf7d0;
+  --color-success-text: #166534;
+  --color-error-bg: #fef2f2;
+  --color-error-border: #fecdd3;
+  --color-error-text: #881337;
+  --color-info-bg: #eff6ff;
+  --color-info-border: #bfdbfe;
+  --color-info-text: #1e40af;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --color-bg-app: #111827; /* gray-900 */
+  --color-bg-card: #1f2937; /* gray-800 */
+  --color-bg-input: #374151; /* gray-700 */
+  --color-bg-selected: #172554; /* blue-950 */
+  --color-bg-hover: #374151; /* gray-700: keyboard/mouse highlight and hover, visible against bg-card's darker grey */
+  --color-bg-pressed: #4b5563; /* gray-600: a button held down */
+  --color-segment-track: #1f2937; /* gray-800: muted text on it 6.8:1 */
+  --color-segment-thumb: #4b5563; /* gray-600: lighter than the track, as in light (1.9:1); text on it 7.2:1 */
+
+  --color-text: #f9fafb; /* gray-50 */
+  --color-text-muted: #aab1bd; /* 4.8:1 on bg-input, the darkest pairing */
+
+  --color-border: #4b5563; /* gray-600 */
+  --color-border-strong: #8b93a1; /* 3.3:1 on bg-input */
+  --color-focus: #60a5fa; /* blue-400: 5.8:1 on bg-card */
+
+  --color-primary: #2563eb; /* blue-600: white text 5.2:1 (blue-500 fails) */
+  --color-primary-hover: #1d4ed8; /* blue-700 */
+  --color-primary-pressed: #1e40af; /* blue-800 */
+  --color-danger: #e11d48; /* rose-600: white text 4.7:1 (rose-500 fails) */
+  --color-danger-hover: #be123c; /* rose-700 */
+  --color-danger-pressed: #9f1239; /* rose-800 */
+  --color-warning: #fbbf24; /* amber-400: 8.8:1 on bg-card */
+
+  --color-success-bg: #052e16;
+  --color-success-border: #166534;
+  --color-success-text: #86efac;
+  --color-error-bg: #4c0519;
+  --color-error-border: #881337;
+  --color-error-text: #fca5a5;
+  --color-info-bg: #172554;
+  --color-info-border: #1e3a8a;
+  --color-info-text: #93c5fd;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  background-color: var(--color-bg-app);
+  color: var(--color-text);
+}
+
+/*
+ * No scrollbars, as in an app rather than a page: regions still scroll (wheel,
+ * touchpad, keys), and scrollFade (components/scroll-fade) fades the edges
+ * that have more content past them instead. WebKitGTK hides them through the
+ * -webkit- pseudo element; other engines through the standard property.
+ */
+::-webkit-scrollbar {
+  display: none;
+}
+
+* {
+  scrollbar-width: none;
+}
+
+/*
+ * A theme change the user makes crossfades the whole window as one image
+ * (settings/theme.ts starts a view transition), instead of each element
+ * changing colour on its own schedule. Opacity only, so it stays under reduced
+ * motion.
+ */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 200ms;
+}
+
+/*
+ * For "loading" text: it appears only if the wait lasts, so a quick load
+ * doesn't flash it. Opacity only.
+ */
+.appear-delayed {
+  animation: appear-delayed 200ms var(--ease-out-strong) 400ms both;
+}
+
+@keyframes appear-delayed {
+  from {
+    opacity: 0;
+  }
+}
