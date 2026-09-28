@@ -157,6 +157,17 @@ export function openLink(link: AppLink): Promise<void> {
   return invoke('open_link', { link });
 }
 
+// ─── Window ──────────────────────────────────────────────────────────────────
+
+/**
+ * Shows the window, which starts hidden so that the WebView's blank white page
+ * never flashes on screen: call it once the first render (in the right theme) is
+ * in the DOM.
+ */
+export function showWindow(): Promise<void> {
+  return invoke('show_window');
+}
+
 // ─── Events ──────────────────────────────────────────────────────────────────
 
 /** Emitted when the backend auto-locks the vault after the user was idle. */

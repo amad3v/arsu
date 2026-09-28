@@ -78,6 +78,7 @@ const wrappers: [string, () => Promise<unknown>, string, InvokeArgs | undefined]
   ['getAboutInfo', () => api.getAboutInfo(), 'get_about_info', undefined],
   ['copyAboutDetails', () => api.copyAboutDetails(), 'copy_about_details', undefined],
   ['openLink', () => api.openLink('issues'), 'open_link', { link: 'issues' }],
+  ['showWindow', () => api.showWindow(), 'show_window', undefined],
   [
     'updateSettings',
     () => api.updateSettings({ autoLockMinutes: 10 }),

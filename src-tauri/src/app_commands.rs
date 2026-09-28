@@ -32,6 +32,7 @@ macro_rules! with_app_commands {
       get_about_info,
       copy_about_details,
       open_link,
+      show_window,
     }
   };
 }

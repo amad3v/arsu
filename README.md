@@ -26,24 +26,31 @@ Named after Arsu, the god of the evening star worshipped at Palmyra, who protect
 
 ### From a release
 
-Download the package for your distribution from the [Releases page](https://github.com/amad3v/arsu/releases), check it against `SHA256SUMS`, and install it:
+Download the package for your distribution from the [Releases page](https://github.com/amad3v/arsu/releases), along with `SHA256SUMS` and `SHA256SUMS.asc`. Check them, then install:
 
 ```sh
+curl -sL https://github.com/amad3v.gpg | gpg --import   # the signing key, once
+gpg --verify SHA256SUMS.asc SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 
 # Debian, Ubuntu and derivatives
-sudo apt install ./arsu_1.0.0_amd64.deb
+sudo apt install ./arsu_1.0.1_amd64.deb
 
 # Fedora, openSUSE and other RPM-based distributions
-sudo dnf install ./arsu-1.0.0-1.x86_64.rpm
+sudo dnf install ./arsu-1.0.1-1.x86_64.rpm
 ```
+
+`gpg --verify` must report a good signature from Mohamed Jouini <amad3v@gmail.com>, key fingerprint `6A70 0E00 3968 20D9 3A82  9FF9 1CAC 141C 3451 6CB6`.
 
 ### Arch Linux
 
-Arsu is on the AUR as [`arsu`](https://aur.archlinux.org/packages/arsu), built from source:
+Arsu is on the AUR in two packages, both checked against the signing key above:
+
+- [`arsu`](https://aur.archlinux.org/packages/arsu) builds it from the signed release tag.
+- [`arsu-bin`](https://aur.archlinux.org/packages/arsu-bin) installs the released binary.
 
 ```sh
-yay -S arsu   # or any AUR helper, or git clone + makepkg
+yay -S arsu   # or arsu-bin; any AUR helper, or git clone + makepkg
 ```
 
 ## Your data

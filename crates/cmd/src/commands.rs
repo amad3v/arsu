@@ -441,6 +441,25 @@ pub async fn open_link(window: WebviewWindow, link: AppLink) -> Result<(), AppEr
   .await
 }
 
+// ---- the window --------------------------------------------------------
+
+/// Shows the window, which starts hidden (`tauri.conf.json`). The
+/// frontend calls this once it has rendered, so that its first frame,
+/// already in the saved theme, is the first thing on screen instead of
+/// the `WebView`'s blank white page. Best effort: if the window manager
+/// refuses, the app shell's fallback tries again.
+///
+/// The one command not `async`: it runs on the main thread, where showing
+/// a window has to happen anyway, and it doesn't wait on anything.
+#[tauri::command]
+#[expect(
+  clippy::needless_pass_by_value,
+  reason = "Tauri hands a command its window by value"
+)]
+pub fn show_window(window: WebviewWindow) {
+  let _ = window.show();
+}
+
 // ---- settings ----------------------------------------------------------
 
 /// # Errors

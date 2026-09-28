@@ -29,4 +29,5 @@ permissions = [
   "allow-get-about-info",
   "allow-copy-about-details",
   "allow-open-link",
+  "allow-show-window",
 ]

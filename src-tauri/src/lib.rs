@@ -13,7 +13,7 @@
 #[macro_use]
 mod app_commands;
 
-use std::error::Error;
+use std::{error::Error, thread, time::Duration};
 
 use tauri::{AppHandle, Manager, RunEvent};
 
@@ -50,6 +50,7 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     .setup(|app| {
       app.manage(AppState::new(&cmd::app_paths()?));
       auto_lock::spawn(app.handle().clone())?;
+      show_main_window_eventually(app.handle().clone());
       Ok(())
     })
     .invoke_handler(with_app_commands!(invoke_handler))
@@ -67,6 +68,23 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
   });
   Ok(())
+}
+
+/// How long the window may stay hidden at launch: the frontend shows it
+/// (`show_window`) as soon as it has rendered, which takes well under
+/// this, and this is the fallback if it never does, so that a broken
+/// frontend still leaves a window to see its error in.
+const SHOW_WINDOW_FALLBACK: Duration = Duration::from_secs(3);
+
+fn show_main_window_eventually(app: AppHandle) {
+  thread::spawn(move || {
+    thread::sleep(SHOW_WINDOW_FALLBACK);
+    if let Some(window) = app.get_webview_window("main")
+      && !window.is_visible().unwrap_or(false)
+    {
+      let _ = window.show();
+    }
+  });
 }
 
 fn focus_main_window(app: &AppHandle) {
@@ -152,6 +170,14 @@ mod tests {
       (&window["minWidth"], &window["minHeight"]),
       (&860.into(), &800.into())
     );
+  }
+
+  #[test]
+  fn the_window_starts_hidden_until_the_frontend_shows_it() {
+    let config: serde_json::Value =
+      serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+
+    assert_eq!(config["app"]["windows"][0]["visible"], false);
   }
 
   #[cfg(target_os = "linux")]

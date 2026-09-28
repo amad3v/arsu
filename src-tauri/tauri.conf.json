@@ -17,7 +17,7 @@
         "minWidth": 860,
         "minHeight": 800,
         "label": "main",
-        "visible": true,
+        "visible": false,
         "devtools": false
       }
     ],

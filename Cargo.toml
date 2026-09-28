@@ -14,7 +14,7 @@ members = [
 [workspace.package]
 edition = "2024"
 publish = false
-version = "1.0.0"
+version = "1.0.1"
 
 [workspace.dependencies]
 # internal
@@ -52,8 +52,12 @@ serde_bytes = { version = "^0.11.19" }
 serde_json = { version = "^1.0.151" }
 sha1 = { version = "^0.11.0" }
 sha2 = { version = "^0.11.0" }
-tauri = { version = "^2.11.5", features = [] }
-tauri-build = { version = "^2.6.3", features = [] }
+# At least 2.12: its tao (0.36+) fixes the Wayland title bar of a window
+# that starts hidden, as ours does (tauri.conf.json), whose buttons
+# otherwise ignore clicks until the window is resized; and it lets the
+# compositor draw the frame where it can (KWin), instead of GTK.
+tauri = { version = "^2.12.0", features = [] }
+tauri-build = { version = "^2.7.0", features = [] }
 # Tauri 2 is built on GTK 3; this is the version it links.
 gtk = { version = "^0.18.2" }
 tauri-plugin-single-instance = { version = "^2.4.5" }
