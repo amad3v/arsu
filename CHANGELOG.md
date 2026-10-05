@@ -3,7 +3,7 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
-## [Unreleased] — 1.1.0
+## [1.1.0] — 2026-10-05
 
 ### Added
 
