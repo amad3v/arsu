@@ -4,7 +4,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { appError, deferred, mockCommands } from '@cpt/testing/ipc';
 
-import { ExportEntryQrModal, ExportVaultDialog, QR_VISIBLE_MS } from '.';
+import {
+  ExportEntryQrModal,
+  ExportSaved,
+  ExportVaultDialog,
+  ExportVaultModal,
+  QR_VISIBLE_MS,
+} from '.';
 
 import type { EntrySummary } from '@app-types/api';
 import type { CommandHandler } from '@cpt/testing/ipc';
@@ -211,5 +217,39 @@ describe('ExportVaultDialog', () => {
 
     await screen.findByText('the password must have at least 12 characters');
     expect(screen.getByLabelText('Backup password').getAttribute('aria-invalid')).toBe('true');
+  });
+});
+
+describe('ExportVaultModal with onResult (the touch interface)', () => {
+  it('hands a saved backup to its caller instead of showing it, but keeps a cancel', async () => {
+    const strong = 'correct horse battery';
+    const onResult = vi.fn();
+    let saved = false;
+    mockCommands({ export_to_aegis_file: () => saved });
+    render(() => <ExportVaultModal open onClose={vi.fn()} onResult={onResult} />);
+    await screen.findByRole('dialog');
+    type(screen.getByLabelText('Backup password'), strong);
+    type(screen.getByLabelText('Confirm backup password'), strong);
+    const save = screen.getByRole('button', { name: 'Save to…' });
+
+    fireEvent.click(save);
+    expect((await screen.findByRole('status')).textContent).toBe('No file was saved.');
+    expect(onResult).not.toHaveBeenCalled();
+
+    saved = true;
+    fireEvent.click(save);
+    await waitFor(() => expect(onResult).toHaveBeenCalledOnce());
+    expect(screen.queryByText(/Backup saved/)).toBeNull();
+  });
+});
+
+describe('ExportSaved', () => {
+  it('heads the sheet with the result, focused, and leaves closing to the sheet', () => {
+    render(() => <ExportSaved onDone={vi.fn()} inSheet />);
+
+    const headline = screen.getByRole('heading', { name: 'Backup saved' });
+    expect(document.activeElement).toBe(headline);
+    expect(screen.getByText(/Keep its password safe/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
   });
 });

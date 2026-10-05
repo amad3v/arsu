@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from '@solidjs/testing-library';
+import { Show } from 'solid-js';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { stubPrefersDark } from '@cpt/testing/color-scheme';
@@ -7,13 +8,23 @@ import { mockCommands } from '@cpt/testing/ipc';
 import { TouchDashboard } from '.';
 
 import type { CodeResponse, EntrySummary } from '@app-types/api';
+import type * as ExportDialogs from '@cpt/export-dialogs';
+import type { ExportVaultModalProps } from '@cpt/export-dialogs';
 import type { CommandCall } from '@cpt/testing/ipc';
 
 // The dialogs belong to their own components and tests; here they render nothing.
 vi.mock('@cpt/add-entry-dialog', () => ({ AddEntryModal: () => null }));
 vi.mock('@cpt/import-dialog', () => ({ ImportModal: () => null }));
-vi.mock('@cpt/export-dialogs', () => ({
-  ExportVaultModal: () => null,
+// The export dialog is only a button that reports a saved backup.
+vi.mock('@cpt/export-dialogs', async (importOriginal) => ({
+  ...(await importOriginal<typeof ExportDialogs>()),
+  ExportVaultModal: (props: ExportVaultModalProps) => (
+    <Show when={props.open}>
+      <button type={'button'} onClick={() => props.onResult?.()}>
+        {'Save the backup'}
+      </button>
+    </Show>
+  ),
   ExportEntryQrModal: () => null,
 }));
 vi.mock('@cpt/delete-entry', () => ({ DeleteEntry: () => null }));
@@ -119,6 +130,19 @@ describe('TouchDashboard', () => {
     const page = await screen.findByRole('dialog', { name: 'Settings' });
     expect(within(page).queryByRole('button', { name: /Import entries/ })).toBeNull();
     expect(within(page).queryByRole('button', { name: /Export/ })).toBeNull();
+  });
+
+  it('says a saved backup in a sheet, as an import, once its dialog closes', async () => {
+    await renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add, import or export' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add or move entries' });
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Export encrypted backup/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save the backup' }));
+
+    const result = await screen.findByRole('dialog', { name: 'Export finished' });
+    expect(within(result).getByRole('heading', { name: 'Backup saved' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save the backup' })).toBeNull();
   });
 
   it('locks the vault', async () => {

@@ -7,6 +7,10 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
 
 ### Changed
 
+- On Android, a saved backup is reported the way an import is: the export
+  dialog closes and an "Export finished" sheet over the list says the
+  backup was saved and that its password must be kept, instead of a
+  full-screen page of its own.
 - **Reproducible Android builds**, for F-Droid: built from the same commit
   with the same toolchain, the APK is now identical on any machine apart
   from its signature, so F-Droid can check its own build against ours and

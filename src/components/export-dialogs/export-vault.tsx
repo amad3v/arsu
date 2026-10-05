@@ -43,6 +43,12 @@ export interface ExportVaultModalProps {
   open: boolean;
   onClose: () => void;
   finalFocusEl?: ModalProps['finalFocusEl'];
+  /**
+   * Called once the backup is saved, for the caller to close the dialog and
+   * show the result elsewhere (the touch interface's sheet, with
+   * `ExportSaved`). Without it, the dialog shows the result itself.
+   */
+  onResult?: () => void;
 }
 
 /** The "Export encrypted backup" dialog alone, opened by its caller. */
@@ -58,13 +64,18 @@ export const ExportVaultModal: Component<ExportVaultModalProps> = (props) => {
       initialFocusEl={() => passwordInput() ?? null}
       finalFocusEl={props.finalFocusEl}
     >
-      <ExportVaultForm onDone={() => props.onClose()} passwordRef={setPasswordInput} />
+      <ExportVaultForm
+        onDone={() => props.onClose()}
+        onResult={props.onResult}
+        passwordRef={setPasswordInput}
+      />
     </Modal>
   );
 };
 
 interface ExportVaultFormProps {
   onDone: () => void;
+  onResult?: () => void;
   passwordRef: (element: HTMLInputElement) => void;
 }
 
@@ -95,7 +106,8 @@ const ExportVaultForm: Component<ExportVaultFormProps> = (props) => {
         setPassword('');
         setConfirmation('');
       }
-      setOutcome(saved ? 'saved' : 'cancelled');
+      if (saved && props.onResult) props.onResult();
+      else setOutcome(saved ? 'saved' : 'cancelled');
     } catch (err) {
       if (isAppError(err, 'WeakPassword')) {
         setPasswordError(errorMessage(err));
@@ -171,24 +183,52 @@ const ExportVaultForm: Component<ExportVaultFormProps> = (props) => {
   );
 };
 
-const ExportSaved: Component<{ onDone: () => void }> = (props) => {
+export interface ExportSavedProps {
+  onDone: () => void;
+  /**
+   * Shown in the touch interface's sheet, which a tap outside it closes: a
+   * headline with a key beside it, as an import's result has, and no Done
+   * button.
+   */
+  inSheet?: boolean;
+}
+
+/** That the backup was saved, and that its password must be kept. */
+export const ExportSaved: Component<ExportSavedProps> = (props) => {
   const focusMessage = createFocusOnMount();
 
   return (
-    <div class={'space-y-4'}>
-      <p
-        ref={focusMessage}
-        tabIndex={-1}
-        class={'success flex gap-2 items-start focus:outline-none'}
-      >
-        <i class={'i-ph-check-circle mt-0.5 shrink-0 size-4'} aria-hidden={'true'} />
-        {"Backup saved. Keep its password safe: you'll need it to restore the backup."}
-      </p>
-      <div class={'flex justify-end'}>
-        <button class={'btn-primary'} onClick={() => props.onDone()} type={'button'}>
-          {'Done'}
-        </button>
+    <Show
+      when={props.inSheet}
+      fallback={
+        <div class={'space-y-4'}>
+          <p
+            ref={focusMessage}
+            tabIndex={-1}
+            class={'success flex gap-2 items-start focus:outline-none'}
+          >
+            <i class={'i-ph-check-circle mt-0.5 shrink-0 size-4'} aria-hidden={'true'} />
+            {"Backup saved. Keep its password safe: you'll need it to restore the backup."}
+          </p>
+          <div class={'flex justify-end'}>
+            <button class={'btn-primary'} onClick={() => props.onDone()} type={'button'}>
+              {'Done'}
+            </button>
+          </div>
+        </div>
+      }
+    >
+      <div class={'space-y-4'}>
+        <h3
+          ref={focusMessage}
+          tabIndex={-1}
+          class={'text-lg text-text font-semibold flex gap-3 items-center focus:outline-none'}
+        >
+          <i class={'i-ph-key-bold text-primary shrink-0 size-6'} aria-hidden={'true'} />
+          {'Backup saved'}
+        </h3>
+        <p class={'subtle'}>{"Keep its password safe: you'll need it to restore the backup."}</p>
       </div>
-    </div>
+    </Show>
   );
 };

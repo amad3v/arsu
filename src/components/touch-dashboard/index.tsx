@@ -13,7 +13,7 @@ import { DeleteEntry } from '@cpt/delete-entry';
 import { createEntryCode, liveCode, NEW_ENTRY_MS } from '@cpt/entry-card';
 import { entryLabel } from '@cpt/entry-label';
 import { ErrorPanel } from '@cpt/error-panel';
-import { ExportEntryQrModal, ExportVaultModal } from '@cpt/export-dialogs';
+import { ExportEntryQrModal, ExportSaved, ExportVaultModal } from '@cpt/export-dialogs';
 import { countLabel } from '@cpt/format';
 import { ImportModal, ImportResult } from '@cpt/import-dialog';
 import { useSettings } from '@cpt/settings';
@@ -75,6 +75,8 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
   // What the last import did, shown in a sheet over the list it changed.
   const [importReport, setImportReport] = createSignal<ImportReport | null>(null);
   const [exportOpen, setExportOpen] = createSignal(false);
+  // Whether a backup was just saved, said in a sheet as an import's result is.
+  const [exportSaved, setExportSaved] = createSignal(false);
   const [settingsOpen, setSettingsOpen] = createSignal(false);
   const [actionsFor, setActionsFor] = createSignal<EntryCode | null>(null);
   const [deleteTarget, setDeleteTarget] = createSignal<EntrySummary | null>(null);
@@ -356,7 +358,19 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
           )}
         </Show>
       </Sheet>
-      <ExportVaultModal open={exportOpen()} onClose={() => setExportOpen(false)} />
+      <ExportVaultModal
+        open={exportOpen()}
+        onClose={() => setExportOpen(false)}
+        onResult={() => {
+          setExportOpen(false);
+          setExportSaved(true);
+        }}
+      />
+      <Sheet open={exportSaved()} title={'Export finished'} onClose={() => setExportSaved(false)}>
+        <div class={'px-5 pb-3 pt-2'}>
+          <ExportSaved onDone={() => setExportSaved(false)} inSheet />
+        </div>
+      </Sheet>
 
       <AddEntryModal
         open={addOpen()}
