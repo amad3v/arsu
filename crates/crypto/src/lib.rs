@@ -217,7 +217,9 @@ pub enum CryptoError {
 /// Printing it is a leak and copying it multiplies what has to be
 /// scrubbed. Compare two keys with [`CtEq`], which runs in constant
 /// time; the only other thing you can do with a `MasterKey` is pass it
-/// to [`encrypt`] or [`decrypt`].
+/// to [`encrypt`] or [`decrypt`] — and, for one purpose only, seal it
+/// under a hardware-held key ([`Self::expose_for_sealing`],
+/// [`Self::from_sealed`]).
 ///
 /// The key bytes live on the heap and are zeroed on drop, so moving a
 /// `MasterKey` around (into a vault, a `Result`, an `Option`) copies a
@@ -227,6 +229,28 @@ pub struct MasterKey(Box<Zeroizing<[u8; KEY_LEN]>>);
 impl MasterKey {
   fn bytes(&self) -> &[u8; KEY_LEN] {
     &self.0
+  }
+
+  /// The key's bytes, for one use only: sealing them under a key the
+  /// platform keeps in hardware and releases only after a biometric
+  /// check (Android Keystore), so the vault can be unlocked without the
+  /// password. Anything else should go through [`encrypt`]/[`decrypt`].
+  #[must_use]
+  pub fn expose_for_sealing(&self) -> &[u8; KEY_LEN] {
+    self.bytes()
+  }
+
+  /// The key back from the bytes [`Self::expose_for_sealing`] gave, once
+  /// unsealed. `None` unless they are exactly [`KEY_LEN`] bytes. Whether
+  /// they are the right key, only decrypting with it can tell.
+  #[must_use]
+  pub fn from_sealed(bytes: &[u8]) -> Option<Self> {
+    let mut key = Box::new(Zeroizing::new([0u8; KEY_LEN]));
+    if bytes.len() != KEY_LEN {
+      return None;
+    }
+    key.copy_from_slice(bytes);
+    Some(Self(key))
   }
 
   fn cipher(&self) -> XChaCha20Poly1305 {
@@ -378,6 +402,17 @@ pub fn decrypt(
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn a_key_survives_sealing_as_bytes() {
+    let salt = Salt([7; SALT_LEN]);
+    let key = derive_key(b"password", &salt, &KdfParams::MINIMUM).unwrap();
+    let back = MasterKey::from_sealed(key.expose_for_sealing()).unwrap();
+    assert!(bool::from(key.ct_eq(&back)));
+
+    assert!(MasterKey::from_sealed(&[0; KEY_LEN - 1]).is_none());
+    assert!(MasterKey::from_sealed(&[0; KEY_LEN + 1]).is_none());
+  }
 
   fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write;

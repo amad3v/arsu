@@ -17,6 +17,11 @@ export interface ImportFlowProps {
   onImported: (summary: ImportSummary) => void;
   /** The user dismissed the result. */
   onDone: () => void;
+  /**
+   * Takes the result to show it elsewhere (the touch interface's sheet),
+   * instead of in the dialog. The dialog is then done with.
+   */
+  onResult?: (report: ImportReport) => void;
 }
 
 type Busy = 'picking' | 'importing' | null;
@@ -75,7 +80,8 @@ export const ImportFlow: Component<ImportFlowProps> = (props) => {
       const summary = await importFile(current.token, password() === '' ? null : password());
       setPassword('');
       props.onImported(summary);
-      setReport(importReport(summary));
+      if (props.onResult) props.onResult(importReport(summary));
+      else setReport(importReport(summary));
     } catch (err) {
       if (isAppError(err, 'PasswordRequired')) {
         askForPassword('This file is encrypted. Enter its password.');

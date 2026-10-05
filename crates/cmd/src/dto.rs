@@ -267,7 +267,7 @@ pub struct PickedFile {
   pub token: String,
   /// The file name, for display only (lossily converted to UTF-8).
   pub file_name: String,
-  /// The backup's format, from its extension.
+  /// The backup's format, told from its content; its name can be anything.
   pub format: ImportFormat,
 }
 
@@ -301,6 +301,32 @@ impl From<&interop::SkippedEntry> for SkippedEntry {
   }
 }
 
+/// Whether the phone looks rooted, and whether the user accepted the risk
+/// of keeping the vault on it. `accepted` is only ever `true` when
+/// `rooted` is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeviceCheck {
+  pub rooted: bool,
+  pub accepted: bool,
+}
+
+/// Biometric unlock, as the settings and the unlock screen show it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BiometricStatus {
+  /// This platform has biometric unlock (Android).
+  pub supported: bool,
+  /// A strong biometric (a fingerprint, or a secure face unlock) is set
+  /// up and usable now.
+  pub available: bool,
+  /// Why not, when not: `no-hardware`, `not-enrolled`, `unavailable`,
+  /// `update-required` or `unsupported`.
+  pub reason: Option<String>,
+  /// The user turned it on, and it has not been turned off since.
+  pub enabled: bool,
+}
+
 /// What the About dialog shows: the app, what it runs on, and where it
 /// keeps its files. Paths are lossily converted to UTF-8, for display.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -309,10 +335,15 @@ pub struct AboutInfo {
   pub name: String,
   pub version: String,
   pub tauri_version: String,
-  /// The `WebKitGTK` version, or `None` if it cannot be read.
+  /// The engine the interface runs in: `WebKitGTK` on Linux, Android
+  /// System `WebView` on Android.
+  pub webview_name: String,
+  /// The `WebView`'s version, or `None` if it cannot be read.
   pub webview_version: Option<String>,
-  pub vault_path: String,
-  pub settings_path: String,
+  /// Where the vault is; `None` on Android, which shows no paths.
+  pub vault_path: Option<String>,
+  /// Where the settings are; `None` on Android.
+  pub settings_path: Option<String>,
 }
 
 /// A page of the project's the About dialog links to. The frontend names
@@ -634,9 +665,10 @@ mod tests {
       name: "Arsu".to_owned(),
       version: "1.0.0".to_owned(),
       tauri_version: "2.11.6".to_owned(),
+      webview_name: "WebKitGTK".to_owned(),
       webview_version: Some("2.50.1".to_owned()),
-      vault_path: "/v".to_owned(),
-      settings_path: "/s".to_owned(),
+      vault_path: Some("/v".to_owned()),
+      settings_path: Some("/s".to_owned()),
     };
     assert_eq!(
       wire(&info),
@@ -644,6 +676,7 @@ mod tests {
         "name": "Arsu",
         "version": "1.0.0",
         "tauriVersion": "2.11.6",
+        "webviewName": "WebKitGTK",
         "webviewVersion": "2.50.1",
         "vaultPath": "/v",
         "settingsPath": "/s",

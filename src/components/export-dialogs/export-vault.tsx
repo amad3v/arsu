@@ -8,12 +8,12 @@ import { IconifiedButton } from '@cpt/iconified-btn';
 import { Modal } from '@cpt/modal';
 import { NewPasswordFields } from '@cpt/new-password-fields';
 
+import type { ModalProps } from '@app-types/ui';
 import type { Component } from 'solid-js';
 
 /** The "Export encrypted backup" button and its dialog. */
 export const ExportVaultDialog: Component = () => {
   const [open, setOpen] = createSignal(false);
-  const [passwordInput, setPasswordInput] = createSignal<HTMLInputElement>();
   // Not reactive: read only once the dialog closes, to give it back the focus
   // it opened from.
   let trigger: HTMLButtonElement | undefined;
@@ -30,17 +30,36 @@ export const ExportVaultDialog: Component = () => {
         label={'Export encrypted backup'}
       />
 
-      <Modal
+      <ExportVaultModal
         open={open()}
-        title={'Export encrypted backup'}
-        description={'Saves every entry to a password-protected file that Aegis can import.'}
         onClose={() => setOpen(false)}
-        initialFocusEl={() => passwordInput() ?? null}
         finalFocusEl={() => trigger ?? null}
-      >
-        <ExportVaultForm onDone={() => setOpen(false)} passwordRef={setPasswordInput} />
-      </Modal>
+      />
     </>
+  );
+};
+
+export interface ExportVaultModalProps {
+  open: boolean;
+  onClose: () => void;
+  finalFocusEl?: ModalProps['finalFocusEl'];
+}
+
+/** The "Export encrypted backup" dialog alone, opened by its caller. */
+export const ExportVaultModal: Component<ExportVaultModalProps> = (props) => {
+  const [passwordInput, setPasswordInput] = createSignal<HTMLInputElement>();
+
+  return (
+    <Modal
+      open={props.open}
+      title={'Export encrypted backup'}
+      description={'Saves every entry to a password-protected file that Aegis can import.'}
+      onClose={() => props.onClose()}
+      initialFocusEl={() => passwordInput() ?? null}
+      finalFocusEl={props.finalFocusEl}
+    >
+      <ExportVaultForm onDone={() => props.onClose()} passwordRef={setPasswordInput} />
+    </Modal>
   );
 };
 

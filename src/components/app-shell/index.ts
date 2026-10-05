@@ -3,7 +3,7 @@
 
 import { onCleanup, onMount } from 'solid-js';
 
-import { isUnlocked, onVaultLocked, vaultExists } from '@api';
+import { deviceCheck, isUnlocked, onVaultLocked, vaultExists } from '@api';
 import { errorMessage, isAppError } from '@api/lib';
 import { APP_NAME } from '@cpt/app-name';
 import { isTextEntry } from '@cpt/text-entry';
@@ -12,18 +12,27 @@ import { toaster } from '@cpt/toaster';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 
 /** The screens of a session. */
-export type Screen = 'starting' | 'create' | 'unlock' | 'unlocked';
+export type Screen = 'starting' | 'rooted' | 'create' | 'unlock' | 'unlocked';
+
+/** The screens that show the vault: to create, to unlock, or unlocked. */
+export type VaultScreen = Exclude<Screen, 'starting' | 'rooted'>;
 
 /** The screen for a vault that does or doesn't exist, and is or isn't unlocked. */
-export function vaultScreen(exists: boolean, unlocked: boolean): Exclude<Screen, 'starting'> {
+export function vaultScreen(exists: boolean, unlocked: boolean): VaultScreen {
   if (!exists) return 'create';
   return unlocked ? 'unlocked' : 'unlock';
 }
 
 /** Asks the backend which screen to open on. */
-export async function detectVaultScreen(): Promise<Exclude<Screen, 'starting'>> {
+export async function detectVaultScreen(): Promise<VaultScreen> {
   const exists = await vaultExists();
   return vaultScreen(exists, exists && (await isUnlocked()));
+}
+
+/** Whether the phone is rooted and the user hasn't yet accepted the risk of it. */
+export async function needsRootConsent(): Promise<boolean> {
+  const device = await deviceCheck();
+  return device.rooted && !device.accepted;
 }
 
 /** What the user sees when the vault can't be opened at start-up. */

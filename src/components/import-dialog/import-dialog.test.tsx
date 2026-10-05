@@ -59,7 +59,7 @@ describe('ImportFlow', () => {
 
     await pickAegisFile();
     expect(calls.filter((call) => call.cmd === 'pick_import_file')).toHaveLength(1);
-    expect(screen.getByText('Aegis vault export (.json)')).not.toBeNull();
+    expect(screen.getByText('Aegis vault export')).not.toBeNull();
     expect(chooseButton().textContent).toBe('Choose another backup…');
   });
 

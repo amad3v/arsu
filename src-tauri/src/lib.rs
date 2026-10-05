@@ -1,14 +1,16 @@
 //! The app shell: hardens the process, sets up the Tauri plugins, and
 //! registers the state and commands of the `cmd` crate, where the IPC
-//! surface lives.
+//! surface lives. The same shell runs on Linux and on Android, where
+//! [`android_main`] is the entry point instead of `main.rs`.
 //!
 //! Security-relevant configuration lives next to this file:
 //! `tauri.conf.json` sets the Content Security Policy (no remote origin
 //! of any kind), and `capabilities/default.json` grants the window
 //! exactly the app's own commands (`permissions/app-commands.toml`) and
-//! event listening — no plugin commands. The file dialogs (GTK's) and the
-//! clipboard are driven from Rust, which the capability system does not
-//! gate, so the `WebView` itself can open neither.
+//! event listening — no plugin commands. The file dialogs (GTK's, or
+//! Android's document picker) and the clipboard are driven from Rust,
+//! which the capability system does not gate, so the `WebView` itself
+//! can open neither.
 
 #[macro_use]
 mod app_commands;
@@ -30,7 +32,8 @@ macro_rules! invoke_handler {
 }
 
 /// Runs the app until its window closes. A second launch focuses the
-/// running instance's window instead, and exits.
+/// running instance's window instead, and exits. (On Android, the
+/// system keeps the app to one instance itself.)
 ///
 /// # Errors
 ///
@@ -40,15 +43,31 @@ pub fn run() -> Result<(), Box<dyn Error>> {
   #[cfg(target_os = "linux")]
   harden_process()?;
 
-  let app = tauri::Builder::default()
-    // First, so that a second instance hands over before anything else
-    // starts; the vault's own lock backs this up (`VaultInUse`).
-    .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-      focus_main_window(app);
-    }))
+  let builder = tauri::Builder::default();
+  // First, so that a second instance hands over before anything else
+  // starts; the vault's own lock backs this up (`VaultInUse`).
+  #[cfg(target_os = "linux")]
+  let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+    focus_main_window(app);
+  }));
+  // Android's document picker answers through an activity result, which
+  // only a plugin receives. Registering it grants the `WebView` nothing:
+  // the capability allows none of its commands, and `cmd` drives it.
+  #[cfg(target_os = "android")]
+  let builder = builder.plugin(tauri_plugin_dialog::init());
+  // Biometric unlock's Keystore and prompt; `cmd` drives it, the
+  // `WebView` cannot (it has no commands).
+  #[cfg(target_os = "android")]
+  let builder = builder.plugin(biometric::init());
+
+  let app = builder
     .manage(clipboard::Clipboard::new())
     .setup(|app| {
-      app.manage(AppState::new(&cmd::app_paths()?));
+      #[cfg(target_os = "android")]
+      let paths = cmd::app_paths(app.handle())?;
+      #[cfg(not(target_os = "android"))]
+      let paths = cmd::app_paths()?;
+      app.manage(AppState::new(&paths));
       auto_lock::spawn(app.handle().clone())?;
       show_main_window_eventually(app.handle().clone());
       Ok(())
@@ -70,6 +89,19 @@ pub fn run() -> Result<(), Box<dyn Error>> {
   Ok(())
 }
 
+/// The entry point on Android, which Tauri's Android activity calls when
+/// it starts, in place of `main.rs`.
+#[cfg(target_os = "android")]
+#[tauri::mobile_entry_point]
+fn android_main() {
+  if let Err(error) = run() {
+    // Android has no stderr to report to: a crash, at least, shows the
+    // user that the app failed, rather than an activity with no app
+    // behind it.
+    panic!("arsu: {}", cmd::error::describe(&*error));
+  }
+}
+
 /// How long the window may stay hidden at launch: the frontend shows it
 /// (`show_window`) as soon as it has rendered, which takes well under
 /// this, and this is the fallback if it never does, so that a broken
@@ -87,6 +119,7 @@ fn show_main_window_eventually(app: AppHandle) {
   });
 }
 
+#[cfg(target_os = "linux")]
 fn focus_main_window(app: &AppHandle) {
   if let Some(window) = app.get_webview_window("main") {
     // Best effort: if the window manager refuses, the running window
@@ -125,8 +158,6 @@ fn harden_process() -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-  use super::*;
-
   macro_rules! command_names {
     ($($command:ident),* $(,)?) => {
       [$(stringify!($command)),*]
@@ -173,6 +204,18 @@ mod tests {
   }
 
   #[test]
+  fn the_android_window_is_the_same_window_without_devtools() {
+    let config: serde_json::Value =
+      serde_json::from_str(include_str!("../tauri.android.conf.json")).unwrap();
+    let windows = config["app"]["windows"].as_array().unwrap();
+    // The override replaces the whole list: it must keep the one window
+    // the capability names, and keep devtools off.
+    assert_eq!(windows.len(), 1);
+    assert_eq!(windows[0]["label"], "main");
+    assert_eq!(windows[0]["devtools"], false);
+  }
+
+  #[test]
   fn the_window_starts_hidden_until_the_frontend_shows_it() {
     let config: serde_json::Value =
       serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
@@ -185,7 +228,7 @@ mod tests {
   fn the_process_cannot_dump_core() {
     use rustix::process::{DumpableBehavior, Resource, dumpable_behavior, getrlimit};
 
-    harden_process().unwrap();
+    super::harden_process().unwrap();
 
     assert_eq!(dumpable_behavior().unwrap(), DumpableBehavior::NotDumpable);
     let core = getrlimit(Resource::Core);

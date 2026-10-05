@@ -23,7 +23,24 @@
   animation: modal-pop-out 150ms var(--ease-out-strong) forwards;
 }
 
+/* The touch interface's full-screen dialogs slide up, as an Android page does. */
+.modal-page[data-state='open'] {
+  animation: modal-slide-in 250ms var(--ease-out-strong);
+}
+
+.modal-page[data-state='closed'] {
+  animation: modal-slide-out 200ms var(--ease-out-strong) forwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .modal-page[data-state='open'] {
+    animation-name: modal-fade-in;
+  }
+
+  .modal-page[data-state='closed'] {
+    animation-name: modal-fade-out;
+  }
+
   .modal-content[data-state='open'] {
     animation-name: modal-fade-in;
   }
@@ -56,5 +73,19 @@
   to {
     opacity: 0;
     transform: scale(0.96);
+  }
+}
+
+@keyframes modal-slide-in {
+  from {
+    opacity: 0;
+    transform: translateY(8%);
+  }
+}
+
+@keyframes modal-slide-out {
+  to {
+    opacity: 0;
+    transform: translateY(8%);
   }
 }

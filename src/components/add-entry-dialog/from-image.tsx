@@ -27,7 +27,8 @@ const STATUS_TEXT: Record<AddFromImageStatus, string> = {
 /**
  * The QR image tab: drop, choose or paste a screenshot of a QR code. "Choose
  * image…" opens the native file dialog (from Rust, with the image types to
- * pick from), not WebKit's, so the drop area itself does not open a picker.
+ * pick from; Android's photo picker there), not the WebView's, so the drop
+ * area itself does not open a picker.
  */
 export const FromImage: Component<FromImageProps> = (props) => (
   <div class={'flex flex-col gap-3'}>
@@ -50,8 +51,12 @@ export const FromImage: Component<FromImageProps> = (props) => (
         }
       >
         <i class={'i-ph-qr-code text-text-muted size-8'} aria-hidden={'true'} />
-        <p class={'text-sm text-text'}>
+        {/* A touch screen (Android) has nothing to drop or press Ctrl+V with. */}
+        <p class={'text-sm text-text [@media(pointer:coarse)]:hidden'}>
           {'Drop a screenshot of the QR code here, or paste it with Ctrl+V.'}
+        </p>
+        <p class={'text-sm text-text hidden [@media(pointer:coarse)]:block'}>
+          {'Choose a screenshot of the QR code.'}
         </p>
         <button
           type={'button'}

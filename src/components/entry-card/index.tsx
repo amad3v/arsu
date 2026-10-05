@@ -107,7 +107,9 @@ export const EntryCard: Component<EntryCardProps> = (props) => {
     <li
       id={entryRowId(entry().id)}
       role={'row'}
-      class={'entry-row px-3 py-2 flex gap-3 items-center data-[highlighted]:bg-bg-selected'}
+      class={
+        'entry-row px-3 py-2 flex gap-3 items-center data-[highlighted]:bg-bg-selected max-sm:gap-1'
+      }
       data-highlighted={props.highlighted ? '' : undefined}
       data-new={props.isNew ? '' : undefined}
       aria-current={props.highlighted ? 'true' : undefined}
@@ -148,7 +150,14 @@ export const EntryCard: Component<EntryCardProps> = (props) => {
         </Show>
       </div>
 
-      <p role={'gridcell'} class={'text-xs flex shrink-0 w-28 items-center justify-end'}>
+      {/*
+        Hidden on a phone's width, which has no room for it beside the names:
+        the copy button's own check mark still tells a copy apart there.
+      */}
+      <p
+        role={'gridcell'}
+        class={'text-xs flex shrink-0 w-28 items-center justify-end max-sm:hidden'}
+      >
         <Switch>
           <Match when={props.copied}>
             <span class={'text-success-text inline-flex gap-1 items-center'}>
@@ -173,7 +182,7 @@ export const EntryCard: Component<EntryCardProps> = (props) => {
         </Switch>
       </p>
 
-      <div role={'gridcell'} class={'flex shrink-0 w-38 justify-end'}>
+      <div role={'gridcell'} class={'flex shrink-0 w-38 justify-end max-sm:w-auto'}>
         {/*
           One stable, always-focusable <button>: its class, content and label
           switch between "ask for a code" and "copy the code" as the state

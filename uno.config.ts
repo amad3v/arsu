@@ -78,7 +78,12 @@ export default defineConfig({
         hover: 'var(--color-danger-hover)',
         pressed: 'var(--color-danger-pressed)',
       },
-      warning: 'var(--color-warning)',
+      warning: {
+        DEFAULT: 'var(--color-warning)',
+        bg: 'var(--color-warning-bg)',
+        border: 'var(--color-warning-border)',
+        text: 'var(--color-warning-text)',
+      },
       success: {
         bg: 'var(--color-success-bg)',
         border: 'var(--color-success-border)',
@@ -136,6 +141,8 @@ export default defineConfig({
     success:
       'rounded-md border border-success-border bg-success-bg px-3 py-2 text-sm text-success-text',
     info: 'rounded-md border border-info-border bg-info-bg px-3 py-2 text-sm text-info-text',
+    warning:
+      'rounded-md border border-warning-border bg-warning-bg px-3 py-2 text-sm text-warning-text',
     subtle: 'text-sm text-text-muted',
     kbd: 'rounded border border-border bg-bg-app px-1.5 font-mono text-xs text-text-muted',
     // Ark menus (theme, settings, a row's actions).

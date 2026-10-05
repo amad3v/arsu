@@ -1,6 +1,6 @@
 [package]
 name = "arsu"
-description = "Offline TOTP/HOTP authenticator for the Linux desktop, with an encrypted local vault"
+description = "Offline TOTP/HOTP authenticator for Linux and Android, with an encrypted local vault"
 license = "MIT"
 homepage = "https://github.com/amad3v/arsu"
 repository = "https://github.com/amad3v/arsu"
@@ -19,15 +19,21 @@ tauri-build = { workspace = true }
 
 [dependencies]
 cmd = { workspace = true }
-
 tauri = { workspace = true }
-tauri-plugin-single-instance = { workspace = true }
 
 [dev-dependencies]
 serde_json = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix = { workspace = true, features = ["process"] }
+tauri-plugin-single-instance = { workspace = true }
+
+[target.'cfg(target_os = "android")'.dependencies]
+# A direct dependency, so that this crate's build includes the plugin's
+# Android library (Cargo only shows a `links` crate's metadata to its
+# direct dependents).
+biometric = { workspace = true }
+tauri-plugin-dialog = { workspace = true }
 
 [lints]
 workspace = true

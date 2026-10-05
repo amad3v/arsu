@@ -1,0 +1,21 @@
+[package]
+name = "biometric"
+description = "Arsu's biometric unlock on Android: the vault key sealed under an Android Keystore key that only a strong biometric releases"
+edition.workspace = true
+publish.workspace = true
+version.workspace = true
+# Names the Gradle project the app includes (see build.rs).
+links = "tauri-plugin-arsu-biometric"
+
+[build-dependencies]
+tauri-plugin = { workspace = true, features = ["build"] }
+
+[dependencies]
+base64 = { workspace = true }
+serde = { workspace = true }
+tauri = { workspace = true }
+thiserror = { workspace = true }
+zeroize = { workspace = true }
+
+[lints]
+workspace = true

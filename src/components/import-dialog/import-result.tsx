@@ -9,6 +9,11 @@ import type { Component } from 'solid-js';
 export interface ImportResultProps {
   report: ImportReport;
   onDone: () => void;
+  /**
+   * Shown in the touch interface's sheet, which a tap outside it closes: a
+   * key beside the headline, and no Done button.
+   */
+  inSheet?: boolean;
 }
 
 /**
@@ -23,8 +28,12 @@ export const ImportResult: Component<ImportResultProps> = (props) => {
       <h3
         ref={focusHeadline}
         tabIndex={-1}
-        class={'text-base text-text font-semibold focus:outline-none'}
+        class={'text-base text-text font-semibold flex gap-3 items-center focus:outline-none'}
+        classList={{ 'text-lg': props.inSheet === true }}
       >
+        <Show when={props.inSheet}>
+          <i class={'i-ph-key-bold text-primary shrink-0 size-6'} aria-hidden={'true'} />
+        </Show>
         {props.report.headline}
       </h3>
 
@@ -61,11 +70,13 @@ export const ImportResult: Component<ImportResultProps> = (props) => {
         )}
       </For>
 
-      <div class={'flex justify-end'}>
-        <button class={'btn-primary'} onClick={() => props.onDone()} type={'button'}>
-          {'Done'}
-        </button>
-      </div>
+      <Show when={props.inSheet !== true}>
+        <div class={'flex justify-end'}>
+          <button class={'btn-primary'} onClick={() => props.onDone()} type={'button'}>
+            {'Done'}
+          </button>
+        </div>
+      </Show>
     </div>
   );
 };

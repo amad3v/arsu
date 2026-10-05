@@ -76,6 +76,12 @@ const everyKind: Record<AppErrorKind, true> = {
   UnsupportedFileKdfParams: true,
   MalformedFile: true,
   ExportSerialize: true,
+  BiometricCancelled: true,
+  BiometricLockout: true,
+  BiometricInvalidated: true,
+  BiometricUnavailable: true,
+  BiometricFailed: true,
+  BiometricNotEnabled: true,
   SystemClock: true,
   BackgroundTask: true,
 };

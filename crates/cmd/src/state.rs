@@ -10,6 +10,8 @@
 //! master password, scrypt or PBKDF2 in imports and exports — runs with
 //! no lock held, so the rest of the app stays responsive meanwhile.
 
+mod biometric;
+mod device;
 mod entries;
 mod settings;
 mod transfer;
@@ -33,10 +35,13 @@ use transfer::PendingImport;
 /// The app's name on disk: the vault lives in `$XDG_DATA_HOME/arsu`
 /// and the settings in `$XDG_CONFIG_HOME/arsu`. Part of the on-disk
 /// contract — changing it would orphan every existing vault.
+#[cfg(not(target_os = "android"))]
 const APP_NAME: &str = "arsu";
 /// With [`ORGANIZATION`], matches the bundle identifier
 /// `io.github.amad3v.arsu`. Neither is part of any path on Linux.
+#[cfg(not(target_os = "android"))]
 const QUALIFIER: &str = "io.github";
+#[cfg(not(target_os = "android"))]
 const ORGANIZATION: &str = "amad3v";
 
 /// Where the app keeps its files (see [`AppPaths`]).
@@ -45,9 +50,39 @@ const ORGANIZATION: &str = "amad3v";
 ///
 /// Returns [`StorageError::NoProjectDirs`] if the platform's data and
 /// config directories cannot be determined (no home directory).
+#[cfg(not(target_os = "android"))]
 pub fn app_paths() -> Result<AppPaths, AppError> {
   Ok(AppPaths::resolve(QUALIFIER, ORGANIZATION, APP_NAME)?)
 }
+
+/// Where the app keeps its files on Android: in its own private storage,
+/// `/data/user/<user>/io.github.amad3v.arsu`, which only it can read,
+/// as `vault/vault` and `settings/settings.json`. Each file gets a
+/// directory of its own, which the storage crate makes owner-only.
+///
+/// # Errors
+///
+/// Returns [`StorageError::NoProjectDirs`] if Android does not give the
+/// app's data directory.
+#[cfg(target_os = "android")]
+pub fn app_paths<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<AppPaths, AppError> {
+  use tauri::Manager;
+
+  let root = app
+    .path()
+    .app_data_dir()
+    .map_err(|_| StorageError::NoProjectDirs)?;
+  Ok(AppPaths::in_dirs(
+    &root.join(APP_DIRS.0),
+    &root.join(APP_DIRS.1),
+  ))
+}
+
+/// The directories of the vault and the settings on Android, under the
+/// app's data directory. Part of the on-disk contract there, as the
+/// app's name is on Linux.
+#[cfg(target_os = "android")]
+const APP_DIRS: (&str, &str) = ("vault", "settings");
 
 /// Everything the commands share: one instance, managed by Tauri.
 pub struct AppState {
@@ -140,6 +175,8 @@ impl AppState {
       .storage()?
       .create(master_password.expose().as_bytes())?;
     self.start_session(vault);
+    // A key sealed for a vault that went missing cannot open this one.
+    self.remove_biometric_slot()?;
     Ok(())
   }
 
@@ -164,6 +201,11 @@ impl AppState {
   /// Drops the key and every decrypted seed from memory.
   pub fn lock_vault(&self) {
     self.session().vault = None;
+  }
+
+  /// Locks the vault if it is unlocked; tells whether it was.
+  pub(crate) fn lock_if_unlocked(&self) -> bool {
+    self.session().vault.take().is_some()
   }
 
   #[must_use]
@@ -252,6 +294,7 @@ mod tests {
 
   use super::{fixture::*, *};
 
+  #[cfg(not(target_os = "android"))]
   #[test]
   fn the_data_directory_keeps_its_name() {
     let paths = app_paths().unwrap();
@@ -335,6 +378,15 @@ mod tests {
       second.vault_exists().unwrap(),
       "usable once the first quits"
     );
+  }
+
+  #[test]
+  fn locking_when_unlocked_says_whether_it_was() {
+    let fixture = Fixture::unlocked();
+    let state = &fixture.state;
+    assert!(state.lock_if_unlocked());
+    assert!(!state.is_unlocked());
+    assert!(!state.lock_if_unlocked(), "already locked: nothing to tell");
   }
 
   #[test]

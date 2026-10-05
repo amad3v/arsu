@@ -4,3 +4,10 @@ dist
 .vscode
 target
 *.bkp
+# LeanKG code-graph index (local tool state)
+.leankg/
+planning/
+# Signing keys and their passwords never go in the repo (see RELEASING.md)
+*.jks
+*.keystore
+keystore.properties

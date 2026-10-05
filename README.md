@@ -1,6 +1,6 @@
 # Arsu
 
-**Offline TOTP/HOTP authenticator with an encrypted local vault**, for the Linux desktop.
+**Offline TOTP/HOTP authenticator with an encrypted local vault**, for the Linux desktop and Android.
 
 Arsu keeps your two-factor secrets in a single encrypted file on your machine and shows their codes. It never connects to the network: no account, no sync, no telemetry.
 
@@ -18,7 +18,7 @@ Named after Arsu, the god of the evening star worshipped at Palmyra, who protect
 - **TOTP and HOTP**, SHA-1/256/512, 6–8 digits, with the next code shown before the current one expires.
 - **Quick to use from the keyboard:** type to search, arrows to choose, Enter to copy. Or double-click a row.
 - **Locks itself** after an idle time you choose (5 minutes by default, counting time the computer sleeps).
-- **Clears copied codes** from the clipboard after a delay you choose (20 seconds by default), unless you copied something else meanwhile, and asks clipboard managers not to keep them in their history.
+- **Clears copied codes** from the clipboard after a delay you choose (20 seconds by default), unless you copied something else meanwhile, and asks clipboard managers not to keep them in their history. On Android, codes are marked sensitive, so the clipboard preview and keyboards don't show them.
 - **Imports** Aegis and 2FAS backups, plain or encrypted, skipping accounts you already have. **Exports** an encrypted Aegis backup, or a single account as a QR code (after asking for your master password again).
 - **Light and dark themes**, or following the system.
 
@@ -53,13 +53,21 @@ Arsu is on the AUR in two packages, both checked against the signing key above:
 yay -S arsu   # or arsu-bin; any AUR helper, or git clone + makepkg
 ```
 
+### Android
+
+There is no release package for Android yet: build it from source (see [Building for Android](#building-for-android)). Android 7.0 (API 24) or later.
+
 ## Your data
+
+On Linux:
 
 | What                  | Where                                                                  |
 | --------------------- | ---------------------------------------------------------------------- |
 | Vault                 | `$XDG_DATA_HOME/arsu/vault` (`~/.local/share/arsu/vault`)              |
 | Its previous versions | `vault.bak.1` to `vault.bak.3`, next to it                             |
 | Settings              | `$XDG_CONFIG_HOME/arsu/settings.json` (`~/.config/arsu/settings.json`) |
+
+On Android, both live in the app's private storage, `/data/user/0/io.github.amad3v.arsu/` (`vault/vault` and `settings/settings.json`), which no other app can read. The vault is left out of Android's cloud backup. To keep a copy, use **Export**: it writes an encrypted Aegis backup wherever you choose.
 
 **Back up the vault file.** It is the whole backup: copy it anywhere, since it can't be read without your master password.
 
@@ -76,7 +84,7 @@ What Arsu protects against:
 What it can't protect against:
 
 - **Malware running as your user while the vault is unlocked.** Such a program can read your screen, your clipboard and your keystrokes. Lock the vault when you're not using it; it also locks itself when you're idle.
-- **Screen capture.** Linux offers no reliable way for an app to block it.
+- **Screen capture.** Linux offers no reliable way for an app to block it. (Android does: there, Arsu's window can't be captured in screenshots, recordings or the recent apps list.)
 
 ### Reporting a vulnerability
 
@@ -96,6 +104,22 @@ pnpm tauri dev     # run with hot reload
 pnpm tauri build   # .deb and .rpm packages under target/release/bundle/
 ```
 
+### Building for Android
+
+Additionally:
+
+- The [Tauri prerequisites for Android](https://v2.tauri.app/start/prerequisites/#android): Android Studio (or the SDK command-line tools), the NDK, Java 17 or later, and `ANDROID_HOME` and `NDK_HOME` set
+- The Rust Android targets: `rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android`
+
+```sh
+pnpm tauri android dev     # run on a connected device or emulator, with hot reload
+pnpm tauri android build   # APKs and AABs under src-tauri/gen/android/app/build/outputs/
+```
+
+Release builds have to be signed: see [Tauri's guide to Android signing](https://v2.tauri.app/distribute/sign/android/).
+
+The Android project is in `src-tauri/gen/android`. Its manifest asks for no network permission outside debug builds (which load the interface from the development server), and `MainActivity.kt` blocks screen capture and keeps the interface clear of the system bars.
+
 Checks, as CI runs them:
 
 ```sh
@@ -107,11 +131,11 @@ pnpm lint && pnpm typecheck && pnpm fmt:check && pnpm test
 
 ### Layout
 
-| Path         | What                                                                                                                   |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `crates/`    | The Rust core: `crypto`, `vault-core`, `otp`, `qr`, `storage`, `interop`, and `cmd` (the commands the interface calls) |
-| `src-tauri/` | The app shell: process hardening, window, command permissions, Content Security Policy                                 |
-| `src/`       | The interface, in SolidJS                                                                                              |
+| Path         | What                                                                                                                          |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
+| `crates/`    | The Rust core: `crypto`, `vault-core`, `otp`, `qr`, `storage`, `interop`, and `cmd` (the commands the interface calls)        |
+| `src-tauri/` | The app shell: process hardening, window, command permissions, Content Security Policy; the Android project in `gen/android/` |
+| `src/`       | The interface, in SolidJS                                                                                                     |
 
 ## License
 

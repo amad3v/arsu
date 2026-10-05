@@ -1,21 +1,27 @@
-import { createSignal, ErrorBoundary, Match, onCleanup, onMount, Switch } from 'solid-js';
+import { createSignal, ErrorBoundary, Match, onCleanup, onMount, Show, Switch } from 'solid-js';
 
 import { reportUserActivity } from '@api/activity';
 import { errorMessage } from '@api/lib';
 import {
   detectVaultScreen,
+  needsRootConsent,
   onBackendLock,
   startFailure,
   suppressPageContextMenu,
 } from '@cpt/app-shell';
-import { CreateVaultScreen, UnlockScreen } from '@cpt/auth-screens';
+import { CreateVaultScreen, RootWarningScreen, UnlockScreen } from '@cpt/auth-screens';
 import { Dashboard } from '@cpt/dashboard';
 import { ErrorPanel } from '@cpt/error-panel';
 import { useSettings } from '@cpt/settings';
 import { GlobalToaster } from '@cpt/toaster';
+import { TouchDashboard } from '@cpt/touch-dashboard';
+import { isTouchUi } from '@cpt/touch-ui';
 
 import type { Screen, StartFailure } from '@cpt/app-shell';
 import type { Component, ParentComponent } from 'solid-js';
+
+/** Read once: Android gets the touch interface, the desktop its own. */
+const TOUCH_UI = isTouchUi();
 
 const App: Component = () => {
   // Created here, during the first render, so the cached theme is painted
@@ -25,10 +31,18 @@ const App: Component = () => {
   const [screen, setScreen] = createSignal<Screen>('starting');
   const [failure, setFailure] = createSignal<StartFailure | null>(null);
 
+  /**
+   * Opens on the vault, after the rooted-phone warning while it is due: once
+   * the user accepts it, starting again goes past it.
+   */
   async function start() {
     setFailure(null);
     setScreen('starting');
     try {
+      if (TOUCH_UI && (await needsRootConsent())) {
+        setScreen('rooted');
+        return;
+      }
       setScreen(await detectVaultScreen());
     } catch (err) {
       setFailure(startFailure(err));
@@ -77,6 +91,9 @@ const App: Component = () => {
                 <p class={'appear-delayed subtle'}>{'Opening the vault…'}</p>
               </Centered>
             </Match>
+            <Match when={screen() === 'rooted'}>
+              <RootWarningScreen onAccepted={() => void start()} />
+            </Match>
             <Match when={screen() === 'create'}>
               <CreateVaultScreen onDone={() => setScreen('unlocked')} />
             </Match>
@@ -84,7 +101,9 @@ const App: Component = () => {
               <UnlockScreen onDone={() => setScreen('unlocked')} />
             </Match>
             <Match when={screen() === 'unlocked'}>
-              <Dashboard onLocked={() => setScreen('unlock')} />
+              <Show when={TOUCH_UI} fallback={<Dashboard onLocked={() => setScreen('unlock')} />}>
+                <TouchDashboard onLocked={() => setScreen('unlock')} />
+              </Show>
             </Match>
           </Switch>
         </ErrorBoundary>

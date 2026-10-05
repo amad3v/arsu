@@ -1,7 +1,7 @@
 //! The About dialog's backend: what it shows, the text "Copy details"
 //! puts on the clipboard, and opening the project's pages.
 
-use std::{path::Path, sync::mpsc};
+use std::{fmt::Write, path::Path};
 
 use tauri::{AppHandle, WebviewWindow};
 
@@ -28,7 +28,9 @@ impl AppLink {
 
 impl AboutInfo {
   /// The app's name and version (from its package info), the Tauri and
-  /// `WebKitGTK` versions it runs on, and its files' paths.
+  /// `WebView` versions it runs on, and, on the desktop, its files' paths.
+  /// A phone app's files are private to it and out of the user's reach:
+  /// Android shows no paths.
   #[must_use]
   pub fn new(app: &AppHandle, state: &AppState) -> Self {
     let package = app.package_info();
@@ -36,9 +38,10 @@ impl AboutInfo {
       name: package.name.clone(),
       version: package.version.to_string(),
       tauri_version: tauri::VERSION.to_owned(),
+      webview_name: WEBVIEW_NAME.to_owned(),
       webview_version: tauri::webview_version().ok(),
-      vault_path: display(state.paths().vault()),
-      settings_path: display(state.paths().settings()),
+      vault_path: SHOW_PATHS.then(|| display(state.paths().vault())),
+      settings_path: SHOW_PATHS.then(|| display(state.paths().settings())),
     }
   }
 
@@ -46,12 +49,28 @@ impl AboutInfo {
   #[must_use]
   pub fn details_text(&self) -> String {
     let webview = self.webview_version.as_deref().unwrap_or("unknown");
-    format!(
-      "{} {}\nTauri {}\nWebKitGTK {webview}\nVault: {}\nSettings: {}\n",
-      self.name, self.version, self.tauri_version, self.vault_path, self.settings_path,
-    )
+    let mut text = format!(
+      "{} {}\nTauri {}\n{} {webview}\n",
+      self.name, self.version, self.tauri_version, self.webview_name,
+    );
+    if let Some(path) = &self.vault_path {
+      let _ = writeln!(text, "Vault: {path}");
+    }
+    if let Some(path) = &self.settings_path {
+      let _ = writeln!(text, "Settings: {path}");
+    }
+    text
   }
 }
+
+/// Whether the About dialog shows where the app keeps its files.
+const SHOW_PATHS: bool = cfg!(not(target_os = "android"));
+
+/// The engine the interface runs in.
+#[cfg(target_os = "linux")]
+const WEBVIEW_NAME: &str = "WebKitGTK";
+#[cfg(target_os = "android")]
+const WEBVIEW_NAME: &str = "Android System WebView";
 
 fn display(path: &Path) -> String {
   path.to_string_lossy().into_owned()
@@ -67,8 +86,9 @@ fn display(path: &Path) -> String {
 ///
 /// Returns [`AppError::BackgroundTask`] if the main thread can't be
 /// reached, and [`AppError::OpenLink`] if no application opens the link.
+#[cfg(target_os = "linux")]
 pub fn open_link(window: &WebviewWindow, link: AppLink) -> Result<(), AppError> {
-  let (answer, answered) = mpsc::sync_channel(1);
+  let (answer, answered) = std::sync::mpsc::sync_channel(1);
   let main_window = window.clone();
   window
     .run_on_main_thread(move || {
@@ -86,6 +106,23 @@ pub fn open_link(window: &WebviewWindow, link: AppLink) -> Result<(), AppError> 
   // A dropped sender: the closure never ran (the app is shutting down).
   answered.recv().unwrap_or(Ok(()))
 }
+
+/// Opens `link` in the user's browser, or whichever app they chose for
+/// links.
+///
+/// # Errors
+///
+/// Returns [`AppError::OpenLink`] if no installed app opens the link.
+#[cfg(target_os = "android")]
+pub fn open_link(_window: &WebviewWindow, link: AppLink) -> Result<(), AppError> {
+  crate::android::open_url(link.url()).map_err(AppError::OpenLink)
+}
+
+/// Why a link could not be opened.
+#[cfg(target_os = "linux")]
+pub type OpenLinkError = gtk::glib::Error;
+#[cfg(target_os = "android")]
+pub type OpenLinkError = crate::android::JavaError;
 
 #[cfg(test)]
 mod tests {
@@ -106,15 +143,33 @@ mod tests {
       name: "Arsu".to_owned(),
       version: "1.0.0".to_owned(),
       tauri_version: "2.11.6".to_owned(),
+      webview_name: "WebKitGTK".to_owned(),
       webview_version: None,
-      vault_path: "/home/u/.local/share/arsu/vault".to_owned(),
-      settings_path: "/home/u/.config/arsu/settings.json".to_owned(),
+      vault_path: Some("/home/u/.local/share/arsu/vault".to_owned()),
+      settings_path: Some("/home/u/.config/arsu/settings.json".to_owned()),
     };
     assert_eq!(
       info.details_text(),
       "Arsu 1.0.0\nTauri 2.11.6\nWebKitGTK unknown\n\
        Vault: /home/u/.local/share/arsu/vault\n\
        Settings: /home/u/.config/arsu/settings.json\n"
+    );
+  }
+
+  #[test]
+  fn details_leave_out_the_paths_a_phone_does_not_show() {
+    let info = AboutInfo {
+      name: "Arsu".to_owned(),
+      version: "1.1.0".to_owned(),
+      tauri_version: "2.12.0".to_owned(),
+      webview_name: "Android System WebView".to_owned(),
+      webview_version: Some("140.0".to_owned()),
+      vault_path: None,
+      settings_path: None,
+    };
+    assert_eq!(
+      info.details_text(),
+      "Arsu 1.1.0\nTauri 2.12.0\nAndroid System WebView 140.0\n"
     );
   }
 }

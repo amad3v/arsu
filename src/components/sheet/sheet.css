@@ -1,0 +1,56 @@
+/*
+ * The bottom sheet slides up from the bottom edge and back down, over a
+ * fading backdrop. Keyframes, not transitions: Ark's presence keeps a closing
+ * sheet mounted only while a CSS animation runs on it. Reduced motion keeps
+ * the fades and drops the slide.
+ */
+
+.sheet-backdrop[data-state='open'] {
+  animation: sheet-fade-in 200ms var(--ease-out-strong);
+}
+
+.sheet-backdrop[data-state='closed'] {
+  animation: sheet-fade-out 150ms var(--ease-out-strong) forwards;
+}
+
+.sheet-content[data-state='open'] {
+  animation: sheet-slide-in 250ms var(--ease-out-strong);
+}
+
+.sheet-content[data-state='closed'] {
+  animation: sheet-slide-out 200ms var(--ease-out-strong) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-content[data-state='open'] {
+    animation-name: sheet-fade-in;
+  }
+
+  .sheet-content[data-state='closed'] {
+    animation-name: sheet-fade-out;
+  }
+}
+
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-slide-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-slide-out {
+  to {
+    transform: translateY(100%);
+  }
+}

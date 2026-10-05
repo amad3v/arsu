@@ -21,7 +21,7 @@ use qr::QrError;
 use storage::{InvalidSetting, StorageError};
 use vault_core::VaultCoreError;
 
-use crate::{clipboard::ClipboardError, password::MIN_PASSWORD_CHARS};
+use crate::{biometric::SealError, clipboard::ClipboardError, password::MIN_PASSWORD_CHARS};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -77,14 +77,21 @@ pub enum AppError {
   InvalidFilePath,
   /// No application opened a link (no browser, or the portal refused).
   #[error("could not open the link")]
-  OpenLink(#[source] gtk::glib::Error),
+  OpenLink(#[source] crate::about::OpenLinkError),
   /// The file dialog could not be shown.
   #[error("could not open the file dialog")]
   FileDialog(#[source] tauri::Error),
-  /// A file picked for import is neither an Aegis (`.json`) nor a 2FAS
-  /// (`.2fas`) backup, going by its extension.
-  #[error("{0} is not an Aegis (.json) or 2FAS (.2fas) backup")]
+  /// A file picked for import is neither an Aegis vault export nor a 2FAS
+  /// backup, going by its content (its name is not looked at).
+  #[error("{0} is neither an Aegis vault export nor a 2FAS backup")]
   UnsupportedFileType(PathBuf),
+  /// Biometric unlock could not seal or unseal the vault key.
+  #[error(transparent)]
+  Biometric(#[from] SealError),
+  /// Unlocking with a biometric, but it was never turned on (or was
+  /// turned off).
+  #[error("biometric unlock is not turned on")]
+  BiometricNotEnabled,
   #[error("the system clock is set before 1970")]
   SystemClock(#[source] SystemTimeError),
   #[error("a background task failed")]
@@ -160,6 +167,13 @@ pub enum AppErrorKind {
   UnsupportedFileKdfParams,
   MalformedFile,
   ExportSerialize,
+  // Biometric unlock.
+  BiometricCancelled,
+  BiometricLockout,
+  BiometricInvalidated,
+  BiometricUnavailable,
+  BiometricFailed,
+  BiometricNotEnabled,
   // The runtime.
   SystemClock,
   BackgroundTask,
@@ -195,6 +209,14 @@ impl AppError {
       Self::FileDialog(_) => AppErrorKind::FileDialog,
       Self::OpenLink(_) => AppErrorKind::OpenLink,
       Self::UnsupportedFileType(_) => AppErrorKind::UnsupportedFileType,
+      Self::Biometric(error) => match error {
+        SealError::Cancelled => AppErrorKind::BiometricCancelled,
+        SealError::Lockout => AppErrorKind::BiometricLockout,
+        SealError::Invalidated => AppErrorKind::BiometricInvalidated,
+        SealError::Unavailable => AppErrorKind::BiometricUnavailable,
+        SealError::Failed(_) => AppErrorKind::BiometricFailed,
+      },
+      Self::BiometricNotEnabled => AppErrorKind::BiometricNotEnabled,
       Self::SystemClock(_) => AppErrorKind::SystemClock,
       Self::BackgroundTask(_) => AppErrorKind::BackgroundTask,
     }

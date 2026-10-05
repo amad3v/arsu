@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+  "crates/biometric",
   "crates/cmd",
   "crates/crypto",
   "crates/interop",
@@ -14,10 +15,11 @@ members = [
 [workspace.package]
 edition = "2024"
 publish = false
-version = "1.0.1"
+version = "1.1.0"
 
 [workspace.dependencies]
 # internal
+biometric = { path = "crates/biometric" }
 cmd = { path = "crates/cmd" }
 crypto = { path = "crates/crypto" }
 interop = { path = "crates/interop" }
@@ -61,6 +63,10 @@ tauri-build = { version = "^2.7.0", features = [] }
 # Tauri 2 is built on GTK 3; this is the version it links.
 gtk = { version = "^0.18.2" }
 tauri-plugin-single-instance = { version = "^2.4.5" }
+tauri-plugin = { version = "^2.7.1" }
+tauri-plugin-dialog = { version = "^2.8.1" }
+jni = { version = "^0.21.1" }
+ndk-context = { version = "^0.1.1" }
 tempfile = { version = "^3.27.0" }
 thiserror = { version = "^2.0.20" }
 uuid = { version = "^1.26.1", features = ["v7", "serde"] }

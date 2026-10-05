@@ -18,6 +18,11 @@ export interface SegmentTabsProps<T extends string> {
   tabs: readonly SegmentTab<T>[];
   value: T;
   onValueChange: (value: T) => void;
+  /**
+   * Fill the height the parent (a flex column) gives, and no more: a panel
+   * taller than that lays itself out to scroll inside, as the page doesn't.
+   */
+  fill?: boolean;
 }
 
 /**
@@ -36,7 +41,7 @@ export function SegmentTabs<T extends string>(props: SegmentTabsProps<T>): JSX.E
         const chosen = props.tabs.find((tab) => tab.value === details.value);
         if (chosen !== undefined) props.onValueChange(chosen.value);
       }}
-      class={'flex flex-col gap-4'}
+      class={props.fill === true ? 'flex flex-col flex-1 gap-4 min-h-0' : 'flex flex-col gap-4'}
     >
       <Tabs.List
         aria-label={props.label}
@@ -64,7 +69,13 @@ export function SegmentTabs<T extends string>(props: SegmentTabsProps<T>): JSX.E
         attribute: the reset's `[hidden] { display: none !important }` would
         take them out of it.
       */}
-      <div class={'segment-panels flex-1'}>
+      <div
+        class={
+          props.fill === true
+            ? 'segment-panels grid-rows-[minmax(0,1fr)] flex-1 min-h-0'
+            : 'segment-panels flex-1'
+        }
+      >
         <For each={props.tabs}>
           {(tab) => (
             <Tabs.Content value={tab.value} hidden={false}>

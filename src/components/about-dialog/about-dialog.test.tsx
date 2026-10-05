@@ -16,6 +16,7 @@ const about: AboutInfo = {
   name: 'Arsu',
   version: '1.0.0',
   tauriVersion: '2.11.6',
+  webviewName: 'WebKitGTK',
   webviewVersion: null,
   vaultPath: '/home/u/.local/share/arsu/vault',
   settingsPath: '/home/u/.config/arsu/settings.json',
@@ -68,8 +69,20 @@ describe('AboutDialog', () => {
       within(dialog).getByText('MIT License · Copyright (c) 2026 Mohamed Jouini'),
     ).toBeTruthy();
     expect(within(dialog).getByText(/Permission is hereby granted/)).toBeTruthy();
-    expect(within(dialog).getByText(about.vaultPath)).toBeTruthy();
+    expect(within(dialog).getByText('/home/u/.local/share/arsu/vault')).toBeTruthy();
     expect(within(dialog).getByText('unknown')).toBeTruthy(); // no WebKitGTK version
+  });
+
+  it('shows no paths when the backend gives none, as on Android', async () => {
+    mockCommands({
+      get_settings: () => settings,
+      get_about_info: () => ({ ...about, vaultPath: null, settingsPath: null }),
+    });
+    const dialog = await openAbout();
+
+    await within(dialog).findByText('Version');
+    expect(within(dialog).queryByText('Vault')).toBeNull();
+    expect(within(dialog).queryByText('Settings')).toBeNull();
   });
 
   it('opens the project pages by name, never by address', async () => {

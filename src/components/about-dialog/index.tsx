@@ -7,6 +7,7 @@ import { Modal } from '@cpt/modal';
 import { scrollFade } from '@cpt/scroll-fade';
 import { SegmentTabs } from '@cpt/segment-tabs';
 import { toaster } from '@cpt/toaster';
+import { isTouchUi } from '@cpt/touch-ui';
 
 import licenseText from '../../../LICENSE?raw';
 import appIcon from '../../assets/app-icon.svg';
@@ -22,6 +23,12 @@ export interface AboutDialogProps {
 }
 
 type AboutTab = 'licence' | 'details' | 'credits';
+
+/** Read once: the touch interface stacks the header, for a phone's width. */
+const TOUCH_UI = isTouchUi();
+
+/** What the app is, in one line. */
+const TAGLINE = 'Two-factor codes for Linux and Android, kept in an encrypted vault.';
 
 /** The licence's copyright line, as the LICENSE file (the one copy of the text) has it. */
 const COPYRIGHT = licenseText.split('\n').find((line) => line.startsWith('Copyright')) ?? '';
@@ -77,16 +84,30 @@ const AboutContent: Component = () => {
   }
 
   return (
-    <div class={'flex flex-col gap-5'}>
-      <div class={'flex gap-4 items-center'}>
-        {/* The app's logo, as its icons are rendered from; its name is next to it. */}
-        <img src={appIcon} alt={''} class={'shrink-0 size-14'} />
-        <div class={'min-w-0'}>
-          <p class={'text-lg font-semibold'}>{APP_NAME}</p>
+    // On a phone it fills the page, so that the licence scrolls in its box and the page doesn't.
+    <div class={TOUCH_UI ? 'flex flex-col gap-5 h-full' : 'flex flex-col gap-5'}>
+      <Show
+        when={TOUCH_UI}
+        fallback={
+          <div class={'flex gap-4 items-center'}>
+            {/* The app's logo, as its icons are rendered from; its name is next to it. */}
+            <img src={appIcon} alt={''} class={'shrink-0 size-14'} />
+            <div class={'min-w-0'}>
+              <p class={'text-lg font-semibold'}>{APP_NAME}</p>
+              <p class={'subtle'}>{`Version ${info()?.version ?? '…'}`}</p>
+              <p class={'subtle'}>{TAGLINE}</p>
+            </div>
+          </div>
+        }
+      >
+        {/* On a phone: the logo, then the name and version, then what the app is, read in turn. */}
+        <div class={'pt-2 text-center flex flex-col gap-1 items-center'}>
+          <img src={appIcon} alt={''} class={'mb-2 size-20'} />
+          <p class={'text-2xl font-semibold'}>{APP_NAME}</p>
           <p class={'subtle'}>{`Version ${info()?.version ?? '…'}`}</p>
-          <p class={'subtle'}>{'Two-factor codes for Linux, kept in an encrypted vault.'}</p>
+          <p class={'text-lg text-text mt-2 max-w-xs'}>{TAGLINE}</p>
         </div>
-      </div>
+      </Show>
 
       <div class={'flex flex-wrap gap-2'}>
         <button type={'button'} class={'btn'} onClick={() => void open('website')}>
@@ -103,12 +124,13 @@ const AboutContent: Component = () => {
         label={'About'}
         value={tab()}
         onValueChange={setTab}
+        fill={TOUCH_UI}
         tabs={[
           {
             value: 'licence',
             label: 'Licence',
             content: () => (
-              <div class={'flex flex-col gap-2'}>
+              <div class={'flex flex-col gap-2 min-h-0'}>
                 <p class={'subtle'}>{`MIT License · ${COPYRIGHT}`}</p>
                 {/*
                   Fills the panel, whose height the other tabs set: the text
@@ -151,14 +173,24 @@ const AboutContent: Component = () => {
                       <dd>{about().version}</dd>
                       <dt class={'text-text-muted'}>{'Tauri'}</dt>
                       <dd>{about().tauriVersion}</dd>
-                      <dt class={'text-text-muted'}>{'WebKitGTK'}</dt>
+                      <dt class={'text-text-muted'}>{about().webviewName}</dt>
                       <dd>{about().webviewVersion ?? 'unknown'}</dd>
-                      <dt class={'text-text-muted'}>{'Vault'}</dt>
-                      <dd class={'text-xs font-mono select-text break-all'}>{about().vaultPath}</dd>
-                      <dt class={'text-text-muted'}>{'Settings'}</dt>
-                      <dd class={'text-xs font-mono select-text break-all'}>
-                        {about().settingsPath}
-                      </dd>
+                      <Show when={about().vaultPath}>
+                        {(path) => (
+                          <>
+                            <dt class={'text-text-muted'}>{'Vault'}</dt>
+                            <dd class={'text-xs font-mono select-text break-all'}>{path()}</dd>
+                          </>
+                        )}
+                      </Show>
+                      <Show when={about().settingsPath}>
+                        {(path) => (
+                          <>
+                            <dt class={'text-text-muted'}>{'Settings'}</dt>
+                            <dd class={'text-xs font-mono select-text break-all'}>{path()}</dd>
+                          </>
+                        )}
+                      </Show>
                     </dl>
                   )}
                 </Show>

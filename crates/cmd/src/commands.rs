@@ -23,15 +23,17 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::{
   about,
+  biometric::{self, PlatformSealer},
   clipboard::{self, ClipboardExt, CopyTicket, OtpCode, SystemClipboard},
   clock::unix_now,
   dto::{
-    AboutInfo, AppLink, CodeResponse, EntrySummary, ImportSummary, ManualEntryInput, PickedFile,
-    SecretQrSvg, SecretString, Settings, SettingsUpdate, parse_entry_id,
+    AboutInfo, AppLink, BiometricStatus, CodeResponse, DeviceCheck, EntrySummary, ImportSummary,
+    ManualEntryInput, PickedFile, SecretQrSvg, SecretString, Settings, SettingsUpdate,
+    parse_entry_id,
   },
   error::AppError,
   file_dialog::{FileDialog, FileType, Purpose},
-  files::read_file,
+  files::UserFile,
   state::AppState,
 };
 
@@ -123,6 +125,131 @@ pub async fn record_activity(app: AppHandle) -> Result<(), AppError> {
   with_state(app, |state| {
     state.record_activity();
     Ok(())
+  })
+  .await
+}
+
+// ---- the device ----------------------------------------------------------
+
+/// Whether the phone looks rooted, and whether the user has accepted the
+/// risk, to warn them before the vault is opened there.
+///
+/// # Errors
+///
+/// `FileRead` if the consent cannot be looked for.
+#[tauri::command]
+pub async fn device_check(app: AppHandle) -> Result<DeviceCheck, AppError> {
+  with_state(app, AppState::device_check).await
+}
+
+/// The user's answer to the rooted-phone warning: if they accept the
+/// risk, it is recorded and not asked again; if not, the app closes.
+///
+/// # Errors
+///
+/// `FileWrite` if the consent cannot be stored.
+#[tauri::command]
+pub async fn answer_root_warning(window: WebviewWindow, accept: bool) -> Result<(), AppError> {
+  if !accept {
+    close_app(&window);
+    return Ok(());
+  }
+  with_state(window.app_handle().clone(), AppState::accept_root_risk).await
+}
+
+/// Closes the app as its user would. On Android that is finishing the
+/// activity, and removing it from the recent apps: Tauri's `exit` only
+/// stops the event loop there, leaving the activity on screen with a
+/// dead page. A window already gone has nothing left to close.
+fn close_app(window: &WebviewWindow) {
+  #[cfg(target_os = "android")]
+  let _ = window.with_webview(|webview| {
+    webview.jni_handle().exec(|env, activity, _webview| {
+      if env
+        .call_method(activity, "finishAndRemoveTask", "()V", &[])
+        .is_err()
+      {
+        // Only an exception, which must not be left pending; the app stays open.
+        let _ = env.exception_clear();
+      }
+    });
+  });
+  #[cfg(not(target_os = "android"))]
+  window.app_handle().exit(0);
+}
+
+// ---- biometric unlock ----------------------------------------------------
+
+/// Whether biometric unlock is supported here (Android), usable now, and
+/// turned on.
+///
+/// # Errors
+///
+/// `FileRead` if whether it is on cannot be told.
+#[tauri::command]
+pub async fn biometric_status(app: AppHandle) -> Result<BiometricStatus, AppError> {
+  run_blocking(move || {
+    let availability = biometric::availability(&app);
+    Ok(BiometricStatus {
+      supported: availability.supported,
+      available: availability.available,
+      reason: availability.reason,
+      enabled: app.state::<AppState>().biometric_enabled()?,
+    })
+  })
+  .await
+}
+
+/// Turns biometric unlock on, after checking the master password again;
+/// the system asks for the user's fingerprint or face.
+///
+/// # Errors
+///
+/// `Locked`, `WrongPassword`, `KeyDerivation`, `BiometricCancelled`,
+/// `BiometricLockout`, `BiometricUnavailable`, `BiometricFailed` or
+/// `FileWrite`.
+#[tauri::command]
+pub async fn enable_biometric_unlock(
+  app: AppHandle,
+  master_password: SecretString,
+) -> Result<(), AppError> {
+  run_blocking(move || {
+    app
+      .state::<AppState>()
+      .enable_biometric_unlock(&master_password, &PlatformSealer::new(&app))
+  })
+  .await
+}
+
+/// Turns biometric unlock off.
+///
+/// # Errors
+///
+/// `FileWrite` or `BiometricFailed`.
+#[tauri::command]
+pub async fn disable_biometric_unlock(app: AppHandle) -> Result<(), AppError> {
+  run_blocking(move || {
+    app
+      .state::<AppState>()
+      .disable_biometric_unlock(&PlatformSealer::new(&app))
+  })
+  .await
+}
+
+/// Unlocks the vault with the user's fingerprint or face.
+///
+/// # Errors
+///
+/// `BiometricNotEnabled`, `BiometricCancelled`, `BiometricLockout`,
+/// `BiometricInvalidated` (it was turned off: the phone's biometrics or
+/// the vault changed), `BiometricUnavailable`, `BiometricFailed`,
+/// `FileRead`, or the vault's own unlock errors.
+#[tauri::command]
+pub async fn unlock_with_biometric(app: AppHandle) -> Result<(), AppError> {
+  run_blocking(move || {
+    app
+      .state::<AppState>()
+      .unlock_with_biometric(&PlatformSealer::new(&app))
   })
   .await
 }
@@ -253,9 +380,32 @@ pub async fn export_entry_qr(
   .await
 }
 
+/// Shows an entry as a QR code once the user passes the fingerprint or
+/// face check, in place of the master password.
+///
+/// # Errors
+///
+/// `InvalidEntryId`, `Locked`, `EntryNotFound`, `BiometricNotEnabled`,
+/// `BiometricCancelled`, `BiometricLockout`, `BiometricInvalidated`,
+/// `BiometricUnavailable`, `BiometricFailed`, `FileRead` or `QrEncode`.
+#[tauri::command]
+pub async fn export_entry_qr_with_biometric(
+  app: AppHandle,
+  entry_id: String,
+) -> Result<SecretQrSvg, AppError> {
+  run_blocking(move || {
+    app
+      .state::<AppState>()
+      .export_entry_qr_with_biometric(parse_entry_id(&entry_id)?, &PlatformSealer::new(&app))
+  })
+  .await
+}
+
 // ---- import and export -------------------------------------------------
 
-/// The backups the import dialog offers: either app's, then each one's.
+/// The backups the import dialog offers: either app's, then each one's,
+/// then any file. The names are only a convenience: a backup is told apart
+/// by its content, so one saved under another name still imports.
 const IMPORT_FILE_TYPES: &[FileType] = &[
   FileType {
     name: "Aegis or 2FAS backup (*.json, *.2fas)",
@@ -268,6 +418,11 @@ const IMPORT_FILE_TYPES: &[FileType] = &[
     patterns: &["*.2fas"],
     mime_types: &[],
   },
+  FileType {
+    name: "All files",
+    patterns: &["*"],
+    mime_types: &[],
+  },
 ];
 
 /// An Aegis vault export: what the import dialog offers, and the export
@@ -278,13 +433,13 @@ const AEGIS_FILE_TYPE: FileType = FileType {
   mime_types: &[],
 };
 
-/// Asks the user for a backup file to import, Aegis' or 2FAS'. Returns
-/// `None` if they cancel.
+/// Asks the user for a backup file to import, Aegis' or 2FAS', and reads
+/// it to tell which, by its content. Returns `None` if they cancel.
 ///
 /// # Errors
 ///
-/// `FileDialog`, `InvalidFilePath`, or `UnsupportedFileType` (a name
-/// typed into the dialog with another extension).
+/// `FileDialog`, `InvalidFilePath`, `NotAFile`, `FileRead`,
+/// `FileTooLarge`, or `UnsupportedFileType` (neither app's backup).
 #[tauri::command]
 pub async fn pick_import_file(window: WebviewWindow) -> Result<Option<PickedFile>, AppError> {
   run_blocking(move || {
@@ -293,10 +448,10 @@ pub async fn pick_import_file(window: WebviewWindow) -> Result<Option<PickedFile
       purpose: Purpose::Open,
       file_types: IMPORT_FILE_TYPES,
     };
-    let Some(path) = dialog.show(&window)? else {
+    let Some(file) = dialog.show(&window)? else {
       return Ok(None);
     };
-    window.state::<AppState>().pick_import(path).map(Some)
+    window.state::<AppState>().pick_import(file).map(Some)
   })
   .await
 }
@@ -344,10 +499,10 @@ pub async fn export_to_aegis_file(
       },
       file_types: &[AEGIS_FILE_TYPE],
     };
-    let Some(path) = dialog.show(&window)? else {
+    let Some(file) = dialog.show(&window)? else {
       return Ok(false);
     };
-    state.export_to_aegis(&password, &path)?;
+    state.export_to_aegis(&password, &file)?;
     Ok(true)
   })
   .await
@@ -386,11 +541,11 @@ pub async fn pick_qr_image(window: WebviewWindow) -> Result<Option<String>, AppE
       purpose: Purpose::Open,
       file_types: &[QR_IMAGE_FILE_TYPE],
     };
-    let Some(path) = dialog.show(&window)? else {
+    let Some(file) = dialog.show(&window)? else {
       return Ok(None);
     };
     window.state::<AppState>().record_activity();
-    let image = read_file(&path, MAX_QR_IMAGE_BYTES)?;
+    let image = file.read(MAX_QR_IMAGE_BYTES)?;
     Ok(Some(BASE64_STANDARD.encode(image.as_slice())))
   })
   .await

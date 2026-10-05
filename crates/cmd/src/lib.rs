@@ -10,10 +10,14 @@
 //! surface in `src/api/` and `src/types/api.ts`.
 
 pub mod about;
+#[cfg(target_os = "android")]
+pub mod android;
 pub mod auto_lock;
+pub mod biometric;
 pub mod clipboard;
 pub mod clock;
 pub mod commands;
+pub mod device;
 pub mod dto;
 pub mod error;
 pub mod file_dialog;

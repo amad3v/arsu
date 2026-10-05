@@ -1,13 +1,15 @@
 //! Importing other authenticators' backups, and exporting to Aegis.
 //!
-//! The file to import is picked in a native dialog, and its path never
-//! leaves Rust: the frontend gets a token for it, so it can retry with a
+//! The file to import is picked in a native dialog, and its path (or, on
+//! Android, its URI) never leaves Rust: the frontend gets a token for it, so it can retry with a
 //! password without the user picking the file again, but it cannot make
 //! the app read any other file.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
-use interop::{ImportOutcome, InteropError, KnownAccounts, MAX_IMPORT_BYTES, aegis, twofas};
+use interop::{
+  BackupFormat, ImportOutcome, InteropError, KnownAccounts, MAX_IMPORT_BYTES, aegis, twofas,
+};
 use storage::VaultStorage;
 use uuid::Uuid;
 use vault_core::Entry;
@@ -17,7 +19,8 @@ use crate::{
   clock::unix_now,
   dto::{ImportFormat, ImportSummary, PickedFile, SecretString, SkippedEntry},
   error::AppError,
-  files::read_file,
+  file_dialog::ChosenFile,
+  files::UserFile,
   password,
 };
 
@@ -25,22 +28,22 @@ use crate::{
 #[derive(Debug, Clone)]
 pub(super) struct PendingImport {
   token: Uuid,
-  path: PathBuf,
-  format: ImportFormat,
+  file: ChosenFile,
 }
 
 impl ImportFormat {
-  /// The format of a picked backup, going by its extension (in any case):
-  /// `.json` is Aegis', `.2fas` is 2FAS'.
-  #[must_use]
-  pub fn from_path(path: &Path) -> Option<Self> {
-    let extension = path.extension()?.to_str()?;
-    if extension.eq_ignore_ascii_case("json") {
-      Some(Self::Aegis)
-    } else if extension.eq_ignore_ascii_case("2fas") {
-      Some(Self::Twofas)
-    } else {
-      None
+  /// The format of a backup, going by its content alone: its name, and
+  /// its extension, can be anything (see [`interop::detect_format`]).
+  ///
+  /// # Errors
+  ///
+  /// Returns [`AppError::UnsupportedFileType`], naming `location`, if the
+  /// content is neither format's, and `FileTooLarge`.
+  fn detect(file: &[u8], location: impl FnOnce() -> PathBuf) -> Result<Self, AppError> {
+    match interop::detect_format(file)? {
+      Some(BackupFormat::Aegis) => Ok(Self::Aegis),
+      Some(BackupFormat::Twofas) => Ok(Self::Twofas),
+      None => Err(AppError::UnsupportedFileType(location())),
     }
   }
 
@@ -58,31 +61,29 @@ impl ImportFormat {
 }
 
 impl AppState {
-  /// Remembers `path`, just picked by the user, as the file to import,
+  /// Remembers `file`, just picked by the user, as the file to import,
   /// replacing any earlier pick. Returns the token to import it with.
+  ///
+  /// The file is read now, to tell its format from its content: a backup
+  /// is accepted whatever its name, and anything else refused whatever
+  /// its name.
   ///
   /// # Errors
   ///
-  /// Returns [`AppError::UnsupportedFileType`] if the file's extension
-  /// is not a backup format's (the dialog can be told any name).
-  pub fn pick_import(&self, path: PathBuf) -> Result<PickedFile, AppError> {
-    let format =
-      ImportFormat::from_path(&path).ok_or_else(|| AppError::UnsupportedFileType(path.clone()))?;
-    Ok(self.register_import(path, format))
+  /// Returns [`AppError::UnsupportedFileType`] if the file is neither an
+  /// Aegis vault export nor a 2FAS backup, or [`AppError::NotAFile`],
+  /// [`AppError::FileRead`] or `FileTooLarge` if it cannot be read.
+  pub fn pick_import(&self, file: ChosenFile) -> Result<PickedFile, AppError> {
+    let bytes = file.read(MAX_IMPORT_BYTES)?;
+    let format = ImportFormat::detect(&bytes, || file.location())?;
+    Ok(self.register_import(file, format))
   }
 
-  fn register_import(&self, path: PathBuf, format: ImportFormat) -> PickedFile {
+  fn register_import(&self, file: ChosenFile, format: ImportFormat) -> PickedFile {
     self.record_activity();
     let token = Uuid::now_v7();
-    let file_name = path
-      .file_name()
-      .map(|name| name.to_string_lossy().into_owned())
-      .unwrap_or_default();
-    *lock(&self.pending_import) = Some(PendingImport {
-      token,
-      path,
-      format,
-    });
+    let file_name = file.name().unwrap_or_default();
+    *lock(&self.pending_import) = Some(PendingImport { token, file });
     PickedFile {
       token: token.to_string(),
       file_name,
@@ -117,13 +118,14 @@ impl AppState {
       session.record_activity();
       session.unlocked()?.payload.active_entries().collect()
     };
-    let file = read_file(&pending.path, MAX_IMPORT_BYTES)?;
+    let file = pending.file.read(MAX_IMPORT_BYTES)?;
+    // Told again from what was just read, not from the pick: the file may
+    // have changed since.
+    let format = ImportFormat::detect(&file, || pending.file.location())?;
     // Decrypting runs scrypt or PBKDF2; no lock is held meanwhile. An
     // account added in that window could be imported twice — the user
     // would have to add it by hand during their own import.
-    let outcome = pending
-      .format
-      .import(&file, password.map(SecretString::expose), &known)?;
+    let outcome = format.import(&file, password.map(SecretString::expose), &known)?;
     let summary = self.add_imported(outcome)?;
 
     let mut pending_import = lock(&self.pending_import);
@@ -182,15 +184,20 @@ impl AppState {
     self.session().unlocked().map(|_| ())
   }
 
-  /// Exports every active entry to `path` as an encrypted Aegis vault,
-  /// written crash-safely and readable only by the user (mode `0600`).
+  /// Exports every active entry to `file` as an encrypted Aegis vault,
+  /// written as [`UserFile::write`] writes: on Linux, crash-safely and
+  /// readable only by the user (mode `0600`).
   ///
   /// # Errors
   ///
   /// Returns [`AppError::WeakPassword`], [`AppError::Locked`], an
   /// [`AppError::Transfer`] error if encryption fails, or
   /// [`AppError::FileWrite`].
-  pub fn export_to_aegis(&self, password: &SecretString, path: &Path) -> Result<(), AppError> {
+  pub fn export_to_aegis(
+    &self,
+    password: &SecretString,
+    file: &ChosenFile,
+  ) -> Result<(), AppError> {
     password::ensure_strong(password)?;
     let entries: Vec<Entry> = {
       let mut session = self.session();
@@ -203,15 +210,13 @@ impl AppState {
         .collect()
     };
     // scrypt; no lock is held meanwhile.
-    let file = aegis::export(&entries, password.expose())?;
-    storage::atomic_write(path, &file).map_err(|source| AppError::FileWrite {
-      path: path.to_owned(),
-      source,
-    })
+    let export = aegis::export(&entries, password.expose())?;
+    file.write(&export)
   }
 }
 
-#[cfg(test)]
+// The tests choose files by path, as Linux's file dialog does.
+#[cfg(all(test, target_os = "linux"))]
 mod tests {
   use std::{
     fs::{self, File},
@@ -344,27 +349,55 @@ mod tests {
   }
 
   #[test]
-  fn a_pick_is_imported_in_the_format_of_its_extension() {
+  fn a_pick_is_told_apart_by_its_content_whatever_its_name() {
     let fixture = Fixture::unlocked();
     let state = &fixture.state;
+    let aegis_backup = plain_aegis(&json!([]));
+    let twofas_backup = serde_json::to_vec(&json!({ "services": [], "schemaVersion": 4 })).unwrap();
+    let pick = |name: &str, contents: &[u8]| {
+      let path = fixture.dir.path().join(name);
+      fs::write(&path, contents).unwrap();
+      state.pick_import(path)
+    };
 
-    let aegis = state.pick_import("/backups/Aegis.JSON".into()).unwrap();
-    assert_eq!(aegis.format, ImportFormat::Aegis);
-    assert_eq!(aegis.file_name, "Aegis.JSON");
-    let twofas = state.pick_import("/backups/phone.2fas".into()).unwrap();
-    assert_eq!(twofas.format, ImportFormat::Twofas);
+    for (name, contents, format) in [
+      ("Aegis.JSON", &aegis_backup, ImportFormat::Aegis),
+      ("aegis-backup", &aegis_backup, ImportFormat::Aegis),
+      ("phone.2fa", &twofas_backup, ImportFormat::Twofas),
+      ("phone.txt", &twofas_backup, ImportFormat::Twofas),
+      ("phone.json", &twofas_backup, ImportFormat::Twofas),
+    ] {
+      let picked = pick(name, contents).unwrap();
+      assert_eq!((picked.format, picked.file_name.as_str()), (format, name));
+    }
 
-    for path in [
-      "/backups/notes.txt",
-      "/backups/json",
-      "/backups/archive.2fas.gz",
+    for (name, contents) in [
+      ("notes.json", br#"{"notes":[]}"#.as_slice()),
+      ("photo.2fas", b"\x89PNG\r\n\x1a\n".as_slice()),
+      ("empty.json", b"".as_slice()),
     ] {
       assert_eq!(
-        state.pick_import(path.into()).unwrap_err().kind(),
+        pick(name, contents).unwrap_err().kind(),
         AppErrorKind::UnsupportedFileType,
-        "{path}"
+        "{name}"
       );
     }
+  }
+
+  #[test]
+  fn an_import_reads_the_file_as_it_is_now() {
+    let fixture = Fixture::unlocked();
+    let state = &fixture.state;
+    let path = fixture.dir.path().join("backup");
+    fs::write(&path, plain_aegis(&json!([]))).unwrap();
+    let picked = state.pick_import(path.clone()).unwrap();
+
+    fs::write(&path, b"no longer a backup").unwrap();
+
+    assert_eq!(
+      state.import_file(&picked.token, None).unwrap_err().kind(),
+      AppErrorKind::UnsupportedFileType
+    );
   }
 
   #[test]

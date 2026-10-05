@@ -80,6 +80,33 @@ pub fn atomic_write(target: &Path, bytes: &[u8]) -> io::Result<()> {
   stage(target, bytes)?.commit()
 }
 
+/// Give the file at `from` a second name, `to`, failing with
+/// [`io::ErrorKind::AlreadyExists`] if `to` exists: a hard link where the
+/// filesystem allows one, and otherwise a crash-safe copy
+/// ([`copy_no_clobber`]).
+///
+/// Android forbids apps hard links (its `SELinux` policy denies them), so
+/// there every backup is a copy. A missing `from` is reported as
+/// [`io::ErrorKind::NotFound`] either way.
+pub(crate) fn link_or_copy(from: &Path, to: &Path) -> io::Result<()> {
+  match fs::hard_link(from, to) {
+    Err(e)
+      if e.kind() == io::ErrorKind::PermissionDenied || e.kind() == io::ErrorKind::Unsupported =>
+    {
+      copy_no_clobber(from, to)
+    }
+    result => result,
+  }
+}
+
+/// Copy `from` to `to` as [`stage`] and [`StagedFile::commit_new`]
+/// write a file: complete and durable before it appears under its
+/// name, owner-only, and never replacing an existing `to`.
+pub(crate) fn copy_no_clobber(from: &Path, to: &Path) -> io::Result<()> {
+  let bytes = fs::read(from)?;
+  stage(to, &bytes)?.commit_new()
+}
+
 /// Make the latest renames, links and removals in `path`'s directory
 /// durable.
 pub(crate) fn sync_parent(path: &Path) -> io::Result<()> {
@@ -197,6 +224,27 @@ mod tests {
 
     assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
     assert_eq!(fs::read(&target).unwrap(), b"first");
+  }
+
+  #[test]
+  fn copy_no_clobber_copies_owner_only_and_never_replaces() {
+    let dir = tempfile::tempdir().unwrap();
+    let from = dir.path().join("vault");
+    let to = dir.path().join("vault.bak.1");
+    fs::write(&from, b"sealed").unwrap();
+
+    copy_no_clobber(&from, &to).unwrap();
+
+    assert_eq!(fs::read(&to).unwrap(), b"sealed");
+    assert_eq!(
+      fs::metadata(&to).unwrap().permissions().mode() & 0o777,
+      PRIVATE_FILE_MODE
+    );
+    let err = copy_no_clobber(&from, &to).unwrap_err();
+    assert_eq!(err.kind(), io::ErrorKind::AlreadyExists);
+    let missing = copy_no_clobber(&dir.path().join("missing"), &dir.path().join("x"));
+    assert_eq!(missing.unwrap_err().kind(), io::ErrorKind::NotFound);
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 2, "no temp left");
   }
 
   #[test]

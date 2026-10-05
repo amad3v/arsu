@@ -119,8 +119,9 @@ enum Backups {
 /// unlocked vault.
 ///
 /// The vault's directory is treated as private to it: it is created
-/// (or tightened to) mode `0700`, and must be on a filesystem with hard
-/// links (every Linux-native one) — backups are hard links.
+/// (or tightened to) mode `0700`. Backups are hard links where the
+/// filesystem allows them (every Linux-native one), and copies where it
+/// doesn't (Android, which forbids apps hard links).
 pub struct VaultStorage {
   vault_path: PathBuf,
   kdf_params: KdfParams,
@@ -230,7 +231,8 @@ impl VaultStorage {
   /// refuse to replace it — leave them alone. Otherwise, any `.bak.N`
   /// found are orphans of a vault that went missing without going
   /// through this handle, so move each aside under a name
-  /// [`Self::rotate_backups`] never touches: a no-clobber hard link to
+  /// [`Self::rotate_backups`] never touches: a no-clobber hard link (or
+  /// copy, see [`fs_util::link_or_copy`]) to
   /// `<vault>.orphaned-<unix-secs>.bak.N`, then remove the original.
   fn orphan_backups_left_by_a_missing_vault(&self) -> Result<(), StorageError> {
     if self.exists()? {
@@ -248,7 +250,7 @@ impl VaultStorage {
     for n in 1..=MAX_BACKUPS {
       let backup = self.backup_path(n);
       let orphaned = self.orphaned_backup_path(unix_secs, n);
-      match fs::hard_link(&backup, &orphaned) {
+      match fs_util::link_or_copy(&backup, &orphaned) {
         Ok(()) => fs_util::remove_if_exists(&backup).map_err(StorageError::io(&backup))?,
         Err(e) if e.kind() == io::ErrorKind::NotFound => {} // no backup in this slot
         Err(e) => return Err(StorageError::io(&backup)(e)),
@@ -276,6 +278,38 @@ impl VaultStorage {
   /// tampered file, or [`StorageError::Io`] if reading, or saving the
   /// upgraded vault, fails.
   pub fn open(&self, master_password: &[u8]) -> Result<UnlockedVault, StorageError> {
+    let vault =
+      self.open_with(|header| derive_key(master_password, &header.salt, &header.kdf_params))?;
+    if vault.kdf_params.is_weaker_than(&self.kdf_params) {
+      self.upgrade_kdf(vault, master_password)
+    } else {
+      Ok(vault)
+    }
+  }
+
+  /// Unlock the vault with its key itself instead of the master
+  /// password: no key derivation runs. This is how a key sealed under a
+  /// biometric-gated hardware key (see [`MasterKey::expose_for_sealing`])
+  /// opens the vault.
+  ///
+  /// A vault whose KDF parameters are weaker than this handle's is not
+  /// upgraded here, since that needs the password: the next password
+  /// unlock does it.
+  ///
+  /// # Errors
+  ///
+  /// As [`Self::open`]; [`StorageError::Crypto`] if `key` is not this
+  /// vault's key (a vault created or re-keyed since it was sealed).
+  pub fn open_with_key(&self, key: MasterKey) -> Result<UnlockedVault, StorageError> {
+    self.open_with(|_| Ok(key))
+  }
+
+  /// Read the vault, get its key from `key_for` (given the header), and
+  /// decrypt.
+  fn open_with(
+    &self,
+    key_for: impl FnOnce(&EnvelopeHeader) -> Result<MasterKey, crypto::CryptoError>,
+  ) -> Result<UnlockedVault, StorageError> {
     let bytes = fs::read(&self.vault_path).map_err(|e| {
       if e.kind() == io::ErrorKind::NotFound {
         StorageError::NotFound(self.vault_path.clone())
@@ -286,25 +320,19 @@ impl VaultStorage {
     let envelope = VaultEnvelope::from_bytes(&bytes)?;
     let header = envelope.header();
 
-    let key = derive_key(master_password, &header.salt, &header.kdf_params)?;
+    let key = key_for(header)?;
     let plaintext = decrypt(
       &key,
       &header.nonce,
       envelope.ciphertext(),
       &envelope.associated_data(),
     )?;
-    let vault = UnlockedVault {
+    Ok(UnlockedVault {
       payload: VaultPayload::from_bytes(&plaintext)?,
       key,
       salt: header.salt,
       kdf_params: header.kdf_params,
-    };
-
-    if vault.kdf_params.is_weaker_than(&self.kdf_params) {
-      self.upgrade_kdf(vault, master_password)
-    } else {
-      Ok(vault)
-    }
+    })
   }
 
   /// Re-encrypt and save, first shifting the backup ring so the current
@@ -348,8 +376,8 @@ impl VaultStorage {
   ///
   /// 1. the new contents are written and fsynced to a temp file — a
   ///    failure here (full disk, crash) leaves everything untouched;
-  /// 2. the backups shift and the current vault is *hard-linked* to
-  ///    `.bak.1` — the vault path itself is never removed;
+  /// 2. the backups shift and the current vault is *hard-linked* (or
+  ///    copied) to `.bak.1` — the vault path itself is never removed;
   /// 3. `rename(2)` atomically swaps the temp file in, and the directory
   ///    fsync makes the links and renames durable.
   ///
@@ -364,7 +392,7 @@ impl VaultStorage {
   }
 
   /// `.bak.(N-1)` → `.bak.N` … `.bak.1` → `.bak.2`, dropping the oldest,
-  /// then hard-link the current vault as `.bak.1`.
+  /// then hard-link (or copy) the current vault as `.bak.1`.
   fn rotate_backups(&self) -> Result<(), StorageError> {
     let oldest = self.backup_path(MAX_BACKUPS);
     fs_util::remove_if_exists(&oldest).map_err(StorageError::io(&oldest))?;
@@ -378,7 +406,7 @@ impl VaultStorage {
     }
 
     let newest = self.backup_path(1);
-    match fs::hard_link(&self.vault_path, &newest) {
+    match fs_util::link_or_copy(&self.vault_path, &newest) {
       Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()), // nothing saved yet
       result => result.map_err(StorageError::io(&newest)),
     }
@@ -546,6 +574,29 @@ mod tests {
     let unlocked = storage.open(PASSWORD).unwrap();
     assert!(unlocked.payload.entries.is_empty());
     assert_eq!(unlocked.kdf_params(), KdfParams::MINIMUM);
+  }
+
+  #[test]
+  fn the_vaults_own_key_opens_it_and_no_other_does() {
+    let (_dir, path) = temp_vault();
+    let storage = storage(&path);
+    let mut created = storage.create(PASSWORD).unwrap();
+    created.payload.entries.push(entry("alice"));
+    storage.save(&created).unwrap();
+    let key = derive_key(PASSWORD, &created.salt(), &created.kdf_params()).unwrap();
+    let sealed = key.expose_for_sealing().to_vec();
+    drop(created);
+
+    let unlocked = storage
+      .open_with_key(MasterKey::from_sealed(&sealed).unwrap())
+      .unwrap();
+    assert_eq!(labels(&unlocked), ["alice"]);
+
+    let other = MasterKey::from_sealed(&[9; crypto::KEY_LEN]).unwrap();
+    assert!(matches!(
+      storage.open_with_key(other),
+      Err(StorageError::Crypto(CryptoError::Decrypt))
+    ));
   }
 
   #[test]

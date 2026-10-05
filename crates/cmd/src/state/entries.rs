@@ -175,10 +175,16 @@ impl AppState {
     if !vault.key_matches(&candidate) {
       return Err(AppError::WrongPassword);
     }
-    let entry = find_entry(&vault.payload, id)?;
-    let uri = build_otpauth_uri(entry.issuer.as_deref(), &entry.account_label, &entry.otp);
-    Ok(SecretQrSvg::from(encode_qr_svg(&uri)?))
+    entry_qr(&vault.payload, id)
   }
+}
+
+/// The entry as a QR code of its `otpauth://` URI, secret included: shown
+/// only once the user has proven who they are.
+pub(super) fn entry_qr(payload: &VaultPayload, id: Uuid) -> Result<SecretQrSvg, AppError> {
+  let entry = find_entry(payload, id)?;
+  let uri = build_otpauth_uri(entry.issuer.as_deref(), &entry.account_label, &entry.otp);
+  Ok(SecretQrSvg::from(encode_qr_svg(&uri)?))
 }
 
 /// The vault entry for a newly added account: the one place entries
@@ -199,7 +205,7 @@ pub(super) fn new_entry(account: ParsedAccount, now: u64) -> Entry {
   }
 }
 
-fn find_entry(payload: &VaultPayload, id: Uuid) -> Result<&Entry, AppError> {
+pub(super) fn find_entry(payload: &VaultPayload, id: Uuid) -> Result<&Entry, AppError> {
   payload
     .active_entries()
     .find(|entry| entry.id == id)

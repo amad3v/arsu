@@ -5,7 +5,9 @@ import { Modal } from '@cpt/modal';
 
 import { ImportFlow } from './import-flow';
 
+import type { ImportReport } from './import-report';
 import type { ImportSummary } from '@app-types/api';
+import type { ModalProps } from '@app-types/ui';
 import type { Component } from 'solid-js';
 
 export interface ImportDialogProps {
@@ -32,20 +34,40 @@ export const ImportDialog: Component<ImportDialogProps> = (props) => {
         label={'Import entries'}
       />
 
-      <Modal
+      <ImportModal
         open={open()}
-        title={'Import entries'}
-        description={
-          'Add the accounts from an Aegis vault export (.json) or a 2FAS backup (.2fas), encrypted or not.'
-        }
         onClose={() => setOpen(false)}
+        onImported={(summary) => props.onImported(summary)}
         finalFocusEl={() => trigger ?? null}
-      >
-        <ImportFlow
-          onImported={(summary) => props.onImported(summary)}
-          onDone={() => setOpen(false)}
-        />
-      </Modal>
+      />
     </>
   );
 };
+
+export interface ImportModalProps extends ImportDialogProps {
+  open: boolean;
+  onClose: () => void;
+  finalFocusEl?: ModalProps['finalFocusEl'];
+  /** Shows the result elsewhere, closing the dialog: see `ImportFlow`. */
+  onResult?: (report: ImportReport) => void;
+}
+
+/** The "Import entries" dialog alone, opened by its caller. */
+export const ImportModal: Component<ImportModalProps> = (props) => (
+  <Modal
+    open={props.open}
+    title={'Import entries'}
+    description={'Add the accounts from an Aegis vault export or a 2FAS backup, encrypted or not.'}
+    onClose={() => props.onClose()}
+    finalFocusEl={props.finalFocusEl}
+  >
+    <ImportFlow
+      onImported={(summary) => props.onImported(summary)}
+      onDone={() => props.onClose()}
+      onResult={props.onResult}
+    />
+  </Modal>
+);
+
+export { ImportResult } from './import-result';
+export type { ImportReport } from './import-report';

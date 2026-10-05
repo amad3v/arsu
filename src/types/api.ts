@@ -60,15 +60,38 @@ export interface HotpInput extends ManualEntryBase {
 export type ManualEntryInput = TotpInput | HotpInput;
 
 /** A file chosen in the native import dialog. The path stays in Rust. */
+/** Whether the phone looks rooted, and whether the user accepted the risk. */
+export interface DeviceCheck {
+  rooted: boolean;
+  /** Only ever true when `rooted` is. */
+  accepted: boolean;
+}
+
+/** Biometric unlock: whether the platform has it, can use it now, and it is on. */
+export interface BiometricStatus {
+  /** This platform has biometric unlock (Android). */
+  supported: boolean;
+  /** A strong biometric (a fingerprint, or a secure face unlock) is set up and usable now. */
+  available: boolean;
+  /** Why not, when not. */
+  reason: 'no-hardware' | 'not-enrolled' | 'unavailable' | 'update-required' | 'unsupported' | null;
+  /** The user turned it on. */
+  enabled: boolean;
+}
+
 /** What the About dialog shows. Paths are for display. */
 export interface AboutInfo {
   name: string;
   version: string;
   tauriVersion: string;
-  /** WebKitGTK's version, or null if it can't be read. */
+  /** The engine the UI runs in: WebKitGTK on Linux, Android System WebView on Android. */
+  webviewName: string;
+  /** The WebView's version, or null if it can't be read. */
   webviewVersion: string | null;
-  vaultPath: string;
-  settingsPath: string;
+  /** Where the vault is; null on Android, which shows no paths. */
+  vaultPath: string | null;
+  /** Where the settings are; null on Android. */
+  settingsPath: string | null;
 }
 
 /** A project page the About dialog opens; the URLs are fixed in Rust. */
@@ -79,7 +102,7 @@ export interface PickedFile {
   token: string;
   /** For display only. */
   fileName: string;
-  /** The backup's format, from its extension. */
+  /** The backup's format, told from its content; its name can be anything. */
   format: ImportFormat;
 }
 
@@ -176,7 +199,7 @@ export type AppErrorKind =
   | 'InvalidFilePath' // the dialog returned a location that is not a local file
   | 'FileDialog' // the file dialog could not be shown
   | 'OpenLink' // no application opened the link
-  | 'UnsupportedFileType' // the picked file is not a .json (Aegis) or .2fas (2FAS) backup
+  | 'UnsupportedFileType' // the picked file's content is neither an Aegis nor a 2FAS backup
   | 'FileTooLarge' // over the 64 MiB import limit
   | 'UnrecognizedFormat' // not a file of the chosen format
   | 'UnsupportedFileVersion' // a version of the format this app doesn't read
@@ -187,6 +210,13 @@ export type AppErrorKind =
   | 'UnsupportedFileKdfParams' // the file asks for key-derivation work beyond the app's bounds
   | 'MalformedFile' // the file's encryption header is malformed
   | 'ExportSerialize' // the export could not be serialized
+  // Biometric unlock
+  | 'BiometricCancelled' // the user dismissed the fingerprint/face prompt
+  | 'BiometricLockout' // too many failed attempts; biometrics are locked for now
+  | 'BiometricInvalidated' // it was turned off: the phone's biometrics or the vault changed
+  | 'BiometricUnavailable' // no strong biometric is set up, or this platform has none
+  | 'BiometricFailed' // the prompt or the keystore failed
+  | 'BiometricNotEnabled' // biometric unlock is not turned on
   // The runtime
   | 'SystemClock' // the system clock is set before 1970
   | 'BackgroundTask'; // a backend task failed unexpectedly

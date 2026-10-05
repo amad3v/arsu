@@ -67,6 +67,54 @@ pub enum InteropError {
   Serialize(#[source] serde_json::Error),
 }
 
+/// The backup formats this crate imports.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BackupFormat {
+  /// An Aegis vault export, plain or encrypted.
+  Aegis,
+  /// A 2FAS backup, plain or encrypted.
+  Twofas,
+}
+
+/// The top-level fields that tell the formats apart; every other field
+/// is skipped unread.
+#[derive(serde::Deserialize)]
+struct FormatMarkers {
+  header: Option<serde::de::IgnoredAny>,
+  db: Option<serde::de::IgnoredAny>,
+  services: Option<serde::de::IgnoredAny>,
+  #[serde(rename = "servicesEncrypted")]
+  services_encrypted: Option<serde::de::IgnoredAny>,
+}
+
+/// Which backup format `file_bytes` is in, going by its content alone, so
+/// that a backup is recognised whatever its name, and anything else is
+/// refused whatever its name: an Aegis vault export is a JSON object with
+/// a `header` and a `db`; a 2FAS backup one with a `services` or
+/// `servicesEncrypted` list. `None` for anything else, including an
+/// object with the markers of both.
+///
+/// This only decides which importer to use: the importer still checks
+/// everything else, and refuses what it cannot read.
+///
+/// # Errors
+///
+/// Returns [`InteropError::FileTooLarge`] for input over
+/// [`MAX_IMPORT_BYTES`].
+pub fn detect_format(file_bytes: &[u8]) -> Result<Option<BackupFormat>, InteropError> {
+  check_size(file_bytes)?;
+  let Ok(markers) = serde_json::from_slice::<FormatMarkers>(file_bytes) else {
+    return Ok(None);
+  };
+  let aegis = markers.header.is_some() && markers.db.is_some();
+  let twofas = markers.services.is_some() || markers.services_encrypted.is_some();
+  Ok(match (aegis, twofas) {
+    (true, false) => Some(BackupFormat::Aegis),
+    (false, true) => Some(BackupFormat::Twofas),
+    _ => None,
+  })
+}
+
 /// Refuses input over [`MAX_IMPORT_BYTES`].
 fn check_size(file_bytes: &[u8]) -> Result<(), InteropError> {
   if u64::try_from(file_bytes.len()).is_ok_and(|len| len <= MAX_IMPORT_BYTES) {
@@ -79,6 +127,46 @@ fn check_size(file_bytes: &[u8]) -> Result<(), InteropError> {
 #[cfg(test)]
 mod tests {
   use super::*;
+
+  #[test]
+  fn formats_are_told_apart_by_content() {
+    let detect = |json: &str| detect_format(json.as_bytes()).unwrap();
+
+    assert_eq!(
+      detect(r#"{"version":1,"header":{"slots":null,"params":null},"db":{"entries":[]}}"#),
+      Some(BackupFormat::Aegis)
+    );
+    assert_eq!(
+      detect(r#"{"version":1,"header":{},"db":"c2VhbGVk"}"#),
+      Some(BackupFormat::Aegis)
+    );
+    assert_eq!(
+      detect(r#"{"services":[],"schemaVersion":4}"#),
+      Some(BackupFormat::Twofas)
+    );
+    assert_eq!(
+      detect(r#"{"servicesEncrypted":"a:b:c","schemaVersion":4}"#),
+      Some(BackupFormat::Twofas)
+    );
+  }
+
+  #[test]
+  fn anything_else_is_no_format() {
+    for input in [
+      "",
+      "not json",
+      "[]",
+      "null",
+      "{}",
+      r#"{"header":{}}"#,
+      r#"{"db":{}}"#,
+      r#"{"header":{},"db":{},"services":[]}"#,
+      r#"{"services":[]"#,
+    ] {
+      assert_eq!(detect_format(input.as_bytes()).unwrap(), None, "{input:?}");
+    }
+    assert_eq!(detect_format(b"\x89PNG\r\n\x1a\n\0\0").unwrap(), None);
+  }
 
   #[test]
   fn importers_refuse_oversized_input() {
@@ -94,5 +182,9 @@ mod tests {
       Err(InteropError::FileTooLarge)
     ));
     assert!(check_size(&oversized[1..]).is_ok());
+    assert!(matches!(
+      detect_format(&oversized),
+      Err(InteropError::FileTooLarge)
+    ));
   }
 }

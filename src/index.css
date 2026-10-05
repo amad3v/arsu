@@ -44,6 +44,9 @@
   --color-info-bg: #eff6ff;
   --color-info-border: #bfdbfe;
   --color-info-text: #1e40af;
+  --color-warning-bg: #fffbeb;
+  --color-warning-border: #f59e0b;
+  --color-warning-text: #78350f;
 }
 
 .dark {
@@ -82,6 +85,9 @@
   --color-info-bg: #172554;
   --color-info-border: #1e3a8a;
   --color-info-text: #93c5fd;
+  --color-warning-bg: #451a03;
+  --color-warning-border: #b45309;
+  --color-warning-text: #fde68a;
 }
 
 html,
@@ -95,6 +101,8 @@ body {
   overscroll-behavior: none;
   background-color: var(--color-bg-app);
   color: var(--color-text);
+  /* Android WebView's grey flash on tap: controls show their own pressed state. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 /*

@@ -11,6 +11,8 @@ import { base64ToBytes } from './lib';
 import type {
   AboutInfo,
   AppLink,
+  BiometricStatus,
+  DeviceCheck,
   CodeResponse,
   EntrySummary,
   ImportSummary,
@@ -35,6 +37,42 @@ export function createVault(masterPassword: string): Promise<void> {
 /** Slow by design (Argon2id). */
 export function unlockVault(masterPassword: string): Promise<void> {
   return invoke('unlock_vault', { masterPassword });
+}
+
+// ─── The device ──────────────────────────────────────────────────────────────
+
+/** Whether the phone looks rooted (never on the desktop), and whether the user accepted the risk. */
+export function deviceCheck(): Promise<DeviceCheck> {
+  return invoke<DeviceCheck>('device_check');
+}
+
+/** Records the user's consent to a rooted phone's risk, or, if they refuse, closes the app. */
+export function answerRootWarning(accept: boolean): Promise<void> {
+  return invoke('answer_root_warning', { accept });
+}
+
+// ─── Biometric unlock ────────────────────────────────────────────────────────
+
+/** Whether biometric unlock is supported here, usable now, and turned on. */
+export function biometricStatus(): Promise<BiometricStatus> {
+  return invoke<BiometricStatus>('biometric_status');
+}
+
+/**
+ * Turns biometric unlock on: re-checks the master password (Argon2id), then
+ * the system asks for a fingerprint or face. The vault must be unlocked.
+ */
+export function enableBiometricUnlock(masterPassword: string): Promise<void> {
+  return invoke('enable_biometric_unlock', { masterPassword });
+}
+
+export function disableBiometricUnlock(): Promise<void> {
+  return invoke('disable_biometric_unlock');
+}
+
+/** The system asks for a fingerprint or face, then the vault unlocks. */
+export function unlockWithBiometric(): Promise<void> {
+  return invoke('unlock_with_biometric');
 }
 
 /** The explicit "lock" action. No `vault-locked` event follows it. */
@@ -96,6 +134,14 @@ export function deleteEntry(entryId: string): Promise<void> {
  */
 export function exportEntryQr(entryId: string, masterPassword: string): Promise<string> {
   return invoke<string>('export_entry_qr', { entryId, masterPassword });
+}
+
+/**
+ * As exportEntryQr, with the fingerprint or face in place of the master
+ * password: the system asks for it first. Needs biometric unlock turned on.
+ */
+export function exportEntryQrWithBiometric(entryId: string): Promise<string> {
+  return invoke<string>('export_entry_qr_with_biometric', { entryId });
 }
 
 // ─── Import and export ───────────────────────────────────────────────────────

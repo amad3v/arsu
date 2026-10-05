@@ -4,14 +4,21 @@
 //! at all. Each copy is remembered only by the SHA-256 digest of the
 //! code, and after the configured delay the clipboard is cleared — but
 //! only if it still holds that very code, and only if no later copy
-//! replaced it: whatever the user copied since is never touched. On
-//! Linux, a copied code is also excluded from clipboard-manager history
-//! (Klipper, `GPaste`, cliphist, …), so the clear cannot be undone by the
-//! history restoring it.
+//! replaced it: whatever the user copied since is never touched. A
+//! copied code is also kept out of clipboard history: on Linux it is
+//! excluded from clipboard managers' (Klipper, `GPaste`, cliphist, …),
+//! so the clear cannot be undone by the history restoring it, and on
+//! Android it is marked sensitive, which hides it from the clipboard
+//! preview and from keyboards' clipboard suggestions.
+//!
+//! Android lets only the app in the foreground read the clipboard, and
+//! the code is usually copied to be pasted in another app, which is in
+//! the foreground when the delay ends. There, a clipboard that cannot be
+//! read is cleared all the same ([`SystemClipboard::CLEAR_IF_UNREADABLE`]):
+//! leaving the code on it would be the worse failure.
 
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use arboard::SetExtLinux;
 use sha2::{Digest, Sha256};
 use tauri::{Manager, Runtime};
 use zeroize::Zeroizing;
@@ -107,6 +114,10 @@ impl CopiedCodes {
 pub trait SystemClipboard {
   type Error;
 
+  /// Whether [`clear_if_unchanged`] clears a clipboard it cannot read.
+  /// Off by default: something unreadable is not the code.
+  const CLEAR_IF_UNREADABLE: bool = false;
+
   /// The clipboard's text, or an error if it holds none.
   ///
   /// # Errors
@@ -127,98 +138,15 @@ pub trait SystemClipboard {
   fn clear(&self) -> Result<(), Self::Error>;
 }
 
-/// What can go wrong reading, writing or clearing the system clipboard.
-#[derive(Debug, thiserror::Error)]
-pub enum ClipboardError {
-  /// No clipboard could be opened for this process — captured once, at
-  /// [`Clipboard::new`], and replayed by every operation rather than
-  /// retried.
-  #[error("the clipboard is not available: {0}")]
-  Unavailable(String),
-  /// [`Clipboard::close`] already released the clipboard (the app is
-  /// exiting).
-  #[error("the clipboard has already been released")]
-  Closed,
-  #[error(transparent)]
-  Operation(#[from] arboard::Error),
-}
+pub use backend::{Clipboard, ClipboardError};
 
-/// The process's system clipboard, owned directly through `arboard`
-/// rather than a Tauri plugin, so a copied code can be excluded from
-/// clipboard-manager history (see the module docs) — something no
-/// plugin exposed a way to do.
-///
-/// `arboard::Clipboard` must be dropped for its contents to survive the
-/// process past that point (see its own docs), and Tauri does not drop
-/// managed state on exit, so [`Self::close`] must be called once, by
-/// hand, from a `RunEvent::Exit` handler.
-pub struct Clipboard(Result<Mutex<Option<arboard::Clipboard>>, String>);
+#[cfg(target_os = "linux")]
+#[path = "clipboard/linux.rs"]
+mod backend;
 
-impl Clipboard {
-  /// Opens the system clipboard. Never fails: if this environment has no
-  /// clipboard support at all, that failure is captured here and
-  /// returned by every later operation instead.
-  #[must_use]
-  pub fn new() -> Self {
-    Self(
-      arboard::Clipboard::new()
-        .map(|clipboard| Mutex::new(Some(clipboard)))
-        .map_err(|error| error.to_string()),
-    )
-  }
-
-  /// Releases the clipboard, handing its contents to a running
-  /// clipboard manager if there is one. Every later operation then
-  /// fails with [`ClipboardError::Closed`] instead of reopening it.
-  pub fn close(&self) {
-    if let Ok(clipboard) = &self.0 {
-      lock(clipboard).take();
-    }
-  }
-
-  fn with<T>(
-    &self,
-    op: impl FnOnce(&mut arboard::Clipboard) -> Result<T, arboard::Error>,
-  ) -> Result<T, ClipboardError> {
-    match &self.0 {
-      Err(reason) => Err(ClipboardError::Unavailable(reason.clone())),
-      Ok(clipboard) => match lock(clipboard).as_mut() {
-        Some(clipboard) => op(clipboard).map_err(ClipboardError::Operation),
-        None => Err(ClipboardError::Closed),
-      },
-    }
-  }
-}
-
-impl Default for Clipboard {
-  fn default() -> Self {
-    Self::new()
-  }
-}
-
-fn lock(mutex: &Mutex<Option<arboard::Clipboard>>) -> MutexGuard<'_, Option<arboard::Clipboard>> {
-  mutex.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-impl SystemClipboard for Clipboard {
-  type Error = ClipboardError;
-
-  fn read_text(&self) -> Result<String, Self::Error> {
-    self.with(arboard::Clipboard::get_text)
-  }
-
-  fn write_text(&self, text: &str) -> Result<(), Self::Error> {
-    // `exclude_from_history` sets the KDE/GNOME "password manager hint"
-    // (Klipper, GPaste) and Wayland's equivalent, so a code is never
-    // written to persisted clipboard history: `clear_if_unchanged`'s
-    // clear cannot otherwise be undone by the history restoring it.
-    self.with(|clipboard| clipboard.set().exclude_from_history().text(text))
-  }
-
-  fn clear(&self) -> Result<(), Self::Error> {
-    self.with(arboard::Clipboard::clear)
-  }
-}
+#[cfg(target_os = "android")]
+#[path = "clipboard/android.rs"]
+mod backend;
 
 /// Mirrors `tauri_plugin_clipboard_manager::ClipboardExt`, the plugin
 /// this replaces: `app.clipboard()` reaches the [`Clipboard`] Tauri
@@ -250,8 +178,10 @@ pub fn shut_down(clipboard: &Clipboard, copies: &CopiedCodes) {
 /// clipboard still holds exactly its code. Returns whether it cleared.
 ///
 /// A clipboard that cannot be read, or holds no text, holds something
-/// else than the code, so it is left alone. Reading must not happen on
-/// the main thread (`arboard`'s X11 backend can deadlock there).
+/// else than the code, so it is left alone — unless the platform cannot
+/// tell the two apart, see [`SystemClipboard::CLEAR_IF_UNREADABLE`].
+/// Reading must not happen on the main thread (`arboard`'s X11 backend
+/// can deadlock there).
 ///
 /// # Errors
 ///
@@ -264,11 +194,11 @@ pub fn clear_if_unchanged<C: SystemClipboard>(
   if !copies.take_if_latest(ticket) {
     return Ok(false);
   }
-  let Ok(text) = clipboard.read_text().map(Zeroizing::new) else {
-    return Ok(false);
-  };
-  if digest(&text) != ticket.digest {
-    return Ok(false);
+  match clipboard.read_text().map(Zeroizing::new) {
+    Ok(text) if digest(&text) != ticket.digest => return Ok(false),
+    Ok(_) => {}
+    Err(_) if C::CLEAR_IF_UNREADABLE => {}
+    Err(_) => return Ok(false),
   }
   clipboard.clear()?;
   Ok(true)
@@ -366,6 +296,49 @@ mod tests {
     let ticket = copies.record(&code("123456"));
 
     assert_eq!(clear_if_unchanged(&clipboard, &copies, ticket), Ok(false));
+  }
+
+  /// A clipboard the app may not read, like Android's while another app
+  /// is in the foreground: reading fails whatever it holds.
+  struct UnreadableClipboard(FakeClipboard);
+
+  impl SystemClipboard for UnreadableClipboard {
+    type Error = ();
+
+    const CLEAR_IF_UNREADABLE: bool = true;
+
+    fn read_text(&self) -> Result<String, ()> {
+      Err(())
+    }
+
+    fn write_text(&self, text: &str) -> Result<(), ()> {
+      self.0.write_text(text)
+    }
+
+    fn clear(&self) -> Result<(), ()> {
+      self.0.clear()
+    }
+  }
+
+  #[test]
+  fn clears_an_unreadable_clipboard_where_the_platform_asks_for_it() {
+    let copies = CopiedCodes::default();
+    let clipboard = UnreadableClipboard(FakeClipboard::holding("123456"));
+    let ticket = copies.record(&code("123456"));
+
+    assert_eq!(clear_if_unchanged(&clipboard, &copies, ticket), Ok(true));
+    assert_eq!(clipboard.0.text(), None);
+  }
+
+  #[test]
+  fn an_unreadable_clipboard_is_still_left_after_a_later_copy() {
+    let copies = CopiedCodes::default();
+    let clipboard = UnreadableClipboard(FakeClipboard::holding("654321"));
+    let first = copies.record(&code("123456"));
+    copies.record(&code("654321"));
+
+    assert_eq!(clear_if_unchanged(&clipboard, &copies, first), Ok(false));
+    assert_eq!(clipboard.0.text().as_deref(), Some("654321"));
   }
 
   #[test]
