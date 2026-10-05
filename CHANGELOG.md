@@ -18,6 +18,17 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
     emitted the theme's CSS variables in the order the build happened to
     meet them, and now emits all of them in the theme's order (about 4 KB
     more, compressed).
+  - The release workflow rebuilds the APK a second time, independently
+    (another directory, other Cargo and rustup homes, no cache), and
+    publishes nothing unless both builds match apart from the signature
+    (`apksigcopier compare`); `.github/scripts/apk-diff.py` lists the
+    entries that differ. It builds with an exact Node version (26.10.0),
+    as F-Droid's recipe does.
+  - The Android version code is written in `src-tauri/tauri.android.conf.json`
+    for F-Droid to read; the release workflow checks it is the one Tauri
+    derives from the version (major × 1000000 + minor × 1000 + patch).
+- F-Droid's listing (name, summary, description, icon) lives in
+  `fastlane/metadata/android/en-US`.
 
 ## [1.1.0] — 2026-10-05
 

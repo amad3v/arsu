@@ -1,0 +1,1 @@
+Offline TOTP/HOTP authenticator with an encrypted local vault
