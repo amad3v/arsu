@@ -7,8 +7,8 @@
 //! desktop: the `WebView` is granted no plugin command at all, and only
 //! ever sees what the commands in [`crate::commands`] return.
 //!
-//! Every call runs on the calling thread, attached to the Java VM for its
-//! duration, in its own JNI local frame. None of these APIs needs the UI
+//! Every call runs on the calling thread, which stays attached to the
+//! Java VM until it exits, in its own JNI local frame. None of these APIs needs the UI
 //! thread. The context used is the application's, which Tauri's Android
 //! glue (`tao`) publishes through `ndk_context` at start-up.
 
@@ -19,8 +19,9 @@ use std::{
 };
 
 use jni::{
-  JNIEnv, JavaVM,
+  Env, JavaVM, jni_sig, jni_str,
   objects::{JObject, JString, JValue},
+  strings::JNIStr,
 };
 
 /// A Java call that failed: the exception it threw, or the JNI failure.
@@ -51,66 +52,51 @@ const API_CLEAR_PRIMARY_CLIP: i32 = 28;
 
 type JniResult<T> = jni::errors::Result<T>;
 
-/// Runs `call` with a JNI environment attached to this thread and the
-/// application context, turning a thrown exception into a [`JavaError`]
-/// (and clearing it, so the thread can keep using JNI).
+/// Runs `call` with this thread attached to the Java VM, in its own JNI
+/// local frame, and the application context; a Java exception thrown in
+/// it is caught (cleared) and becomes a [`JavaError`].
 fn with_context<T>(
-  call: impl FnOnce(&mut JNIEnv<'_>, &JObject<'_>) -> JniResult<T>,
+  call: impl FnOnce(&mut Env<'_>, &JObject<'_>) -> JniResult<T>,
 ) -> Result<T, JavaError> {
   let android = ndk_context::android_context();
-  // SAFETY: `ndk_context` holds the process's Java VM and a global
-  // reference to the application context, both valid for the life of
-  // the process once Tauri's Android glue has started.
-  let vm = unsafe { JavaVM::from_raw(android.vm().cast()) }.map_err(|error| jni_error(&error))?;
-  let mut env = vm
-    .attach_current_thread()
-    .map_err(|error| jni_error(&error))?;
-  // SAFETY: as above; the reference is global, so it is valid on any
-  // thread, and wrapping it in a `JObject` never deletes it.
-  let context = unsafe { JObject::from_raw(android.context().cast()) };
+  // SAFETY: `ndk_context` holds the process's Java VM, valid for the life
+  // of the process once Tauri's Android glue has started.
+  let vm = unsafe { JavaVM::from_raw(android.vm().cast()) };
+  vm.attach_current_thread(|env| {
+    // SAFETY: as above, a global reference to the application context,
+    // valid on any thread; wrapping it in a `JObject` never deletes it.
+    let context = unsafe { JObject::from_raw(env, android.context().cast()) };
+    call(env, &context)
+  })
+  .map_err(|error| match error {
+    jni::errors::Error::CaughtJavaException { name, msg, .. } => {
+      JavaError(format!("{name}: {msg}"))
+    }
+    other => JavaError(format!("JNI call failed: {other}")),
+  })
+}
+
+fn java_string(env: &Env<'_>, object: JObject<'_>) -> JniResult<String> {
+  env.cast_local::<JString>(object)?.try_to_string(env)
+}
+
+fn sdk_int(env: &mut Env<'_>) -> JniResult<i32> {
   env
-    .with_local_frame(16, |env| call(env, &context))
-    .map_err(|error| match take_exception(&mut env) {
-      Some(exception) => JavaError(exception),
-      None => jni_error(&error),
-    })
-}
-
-fn jni_error(error: &jni::errors::Error) -> JavaError {
-  JavaError(format!("JNI call failed: {error}"))
-}
-
-/// Clears the pending Java exception, if there is one, and describes it.
-fn take_exception(env: &mut JNIEnv<'_>) -> Option<String> {
-  if !env.exception_check().unwrap_or(false) {
-    return None;
-  }
-  let throwable = env.exception_occurred().ok();
-  env.exception_clear().ok()?;
-  let description = env
-    .call_method(throwable?, "toString", "()Ljava/lang/String;", &[])
-    .and_then(jni::objects::JValueGen::l)
-    .ok()?;
-  java_string(env, description).ok()
-}
-
-fn java_string(env: &mut JNIEnv<'_>, object: JObject<'_>) -> JniResult<String> {
-  Ok(env.get_string(&JString::from(object))?.into())
-}
-
-fn sdk_int(env: &mut JNIEnv<'_>) -> JniResult<i32> {
-  env
-    .get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?
+    .get_static_field(
+      jni_str!("android/os/Build$VERSION"),
+      jni_str!("SDK_INT"),
+      jni_sig!("I"),
+    )?
     .i()
 }
 
-fn parse_uri<'local>(env: &mut JNIEnv<'local>, uri: &str) -> JniResult<JObject<'local>> {
+fn parse_uri<'local>(env: &mut Env<'local>, uri: &str) -> JniResult<JObject<'local>> {
   let uri = env.new_string(uri)?;
   env
     .call_static_method(
-      "android/net/Uri",
-      "parse",
-      "(Ljava/lang/String;)Landroid/net/Uri;",
+      jni_str!("android/net/Uri"),
+      jni_str!("parse"),
+      jni_sig!("(Ljava/lang/String;)Landroid/net/Uri;"),
       &[JValue::from(&uri)],
     )?
     .l()
@@ -119,18 +105,22 @@ fn parse_uri<'local>(env: &mut JNIEnv<'local>, uri: &str) -> JniResult<JObject<'
 /// The system service named by the `Context` constant `name`, e.g.
 /// `CLIPBOARD_SERVICE`.
 fn system_service<'local>(
-  env: &mut JNIEnv<'local>,
+  env: &mut Env<'local>,
   context: &JObject<'_>,
-  name: &str,
+  name: &JNIStr,
 ) -> JniResult<JObject<'local>> {
   let service = env
-    .get_static_field("android/content/Context", name, "Ljava/lang/String;")?
+    .get_static_field(
+      jni_str!("android/content/Context"),
+      name,
+      jni_sig!("Ljava/lang/String;"),
+    )?
     .l()?;
   env
     .call_method(
       context,
-      "getSystemService",
-      "(Ljava/lang/String;)Ljava/lang/Object;",
+      jni_str!("getSystemService"),
+      jni_sig!("(Ljava/lang/String;)Ljava/lang/Object;"),
       &[JValue::from(&service)],
     )?
     .l()
@@ -146,13 +136,21 @@ fn system_service<'local>(
 /// Returns the Java exception if a call fails.
 pub fn phone_locked() -> Result<bool, JavaError> {
   with_context(|env, context| {
-    let power = system_service(env, context, "POWER_SERVICE")?;
-    if !env.call_method(&power, "isInteractive", "()Z", &[])?.z()? {
+    let power = system_service(env, context, jni_str!("POWER_SERVICE"))?;
+    if !env
+      .call_method(&power, jni_str!("isInteractive"), jni_sig!("()Z"), &[])?
+      .z()?
+    {
       return Ok(true);
     }
-    let keyguard = system_service(env, context, "KEYGUARD_SERVICE")?;
+    let keyguard = system_service(env, context, jni_str!("KEYGUARD_SERVICE"))?;
     env
-      .call_method(&keyguard, "isKeyguardLocked", "()Z", &[])?
+      .call_method(
+        &keyguard,
+        jni_str!("isKeyguardLocked"),
+        jni_sig!("()Z"),
+        &[],
+      )?
       .z()
   })
 }
@@ -160,20 +158,20 @@ pub fn phone_locked() -> Result<bool, JavaError> {
 // ---- the clipboard -------------------------------------------------------
 
 fn clipboard_manager<'local>(
-  env: &mut JNIEnv<'local>,
+  env: &mut Env<'local>,
   context: &JObject<'_>,
 ) -> JniResult<JObject<'local>> {
-  system_service(env, context, "CLIPBOARD_SERVICE")
+  system_service(env, context, jni_str!("CLIPBOARD_SERVICE"))
 }
 
-fn plain_text_clip<'local>(env: &mut JNIEnv<'local>, text: &str) -> JniResult<JObject<'local>> {
+fn plain_text_clip<'local>(env: &mut Env<'local>, text: &str) -> JniResult<JObject<'local>> {
   let label = env.new_string("")?;
   let text = env.new_string(text)?;
   env
     .call_static_method(
-      "android/content/ClipData",
-      "newPlainText",
-      "(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;",
+      jni_str!("android/content/ClipData"),
+      jni_str!("newPlainText"),
+      jni_sig!("(Ljava/lang/CharSequence;Ljava/lang/CharSequence;)Landroid/content/ClipData;"),
       &[JValue::from(&label), JValue::from(&text)],
     )?
     .l()
@@ -191,33 +189,37 @@ pub fn set_clipboard_text(text: &str) -> Result<(), JavaError> {
     let manager = clipboard_manager(env, context)?;
     let clip = plain_text_clip(env, text)?;
     if sdk_int(env)? >= API_CLIP_EXTRAS {
-      let extras = env.new_object("android/os/PersistableBundle", "()V", &[])?;
+      let extras = env.new_object(
+        jni_str!("android/os/PersistableBundle"),
+        jni_sig!("()V"),
+        &[],
+      )?;
       let key = env.new_string(EXTRA_IS_SENSITIVE)?;
       env.call_method(
         &extras,
-        "putBoolean",
-        "(Ljava/lang/String;Z)V",
-        &[JValue::from(&key), JValue::Bool(1)],
+        jni_str!("putBoolean"),
+        jni_sig!("(Ljava/lang/String;Z)V"),
+        &[JValue::from(&key), JValue::Bool(true)],
       )?;
       let description = env
         .call_method(
           &clip,
-          "getDescription",
-          "()Landroid/content/ClipDescription;",
+          jni_str!("getDescription"),
+          jni_sig!("()Landroid/content/ClipDescription;"),
           &[],
         )?
         .l()?;
       env.call_method(
         &description,
-        "setExtras",
-        "(Landroid/os/PersistableBundle;)V",
+        jni_str!("setExtras"),
+        jni_sig!("(Landroid/os/PersistableBundle;)V"),
         &[JValue::from(&extras)],
       )?;
     }
     env.call_method(
       &manager,
-      "setPrimaryClip",
-      "(Landroid/content/ClipData;)V",
+      jni_str!("setPrimaryClip"),
+      jni_sig!("(Landroid/content/ClipData;)V"),
       &[JValue::from(&clip)],
     )?;
     Ok(())
@@ -236,30 +238,45 @@ pub fn clipboard_text() -> Result<Option<String>, JavaError> {
     let clip = env
       .call_method(
         &manager,
-        "getPrimaryClip",
-        "()Landroid/content/ClipData;",
+        jni_str!("getPrimaryClip"),
+        jni_sig!("()Landroid/content/ClipData;"),
         &[],
       )?
       .l()?;
-    if clip.is_null() || env.call_method(&clip, "getItemCount", "()I", &[])?.i()? < 1 {
+    if clip.is_null()
+      || env
+        .call_method(&clip, jni_str!("getItemCount"), jni_sig!("()I"), &[])?
+        .i()?
+        < 1
+    {
       return Ok(None);
     }
     let item = env
       .call_method(
         &clip,
-        "getItemAt",
-        "(I)Landroid/content/ClipData$Item;",
+        jni_str!("getItemAt"),
+        jni_sig!("(I)Landroid/content/ClipData$Item;"),
         &[JValue::Int(0)],
       )?
       .l()?;
     let text = env
-      .call_method(&item, "getText", "()Ljava/lang/CharSequence;", &[])?
+      .call_method(
+        &item,
+        jni_str!("getText"),
+        jni_sig!("()Ljava/lang/CharSequence;"),
+        &[],
+      )?
       .l()?;
     if text.is_null() {
       return Ok(None);
     }
     let text = env
-      .call_method(&text, "toString", "()Ljava/lang/String;", &[])?
+      .call_method(
+        &text,
+        jni_str!("toString"),
+        jni_sig!("()Ljava/lang/String;"),
+        &[],
+      )?
       .l()?;
     java_string(env, text).map(Some)
   })
@@ -275,13 +292,13 @@ pub fn clear_clipboard() -> Result<(), JavaError> {
   with_context(|env, context| {
     let manager = clipboard_manager(env, context)?;
     if sdk_int(env)? >= API_CLEAR_PRIMARY_CLIP {
-      env.call_method(&manager, "clearPrimaryClip", "()V", &[])?;
+      env.call_method(&manager, jni_str!("clearPrimaryClip"), jni_sig!("()V"), &[])?;
     } else {
       let empty = plain_text_clip(env, "")?;
       env.call_method(
         &manager,
-        "setPrimaryClip",
-        "(Landroid/content/ClipData;)V",
+        jni_str!("setPrimaryClip"),
+        jni_sig!("(Landroid/content/ClipData;)V"),
         &[JValue::from(&empty)],
       )?;
     }
@@ -301,27 +318,27 @@ pub fn open_url(url: &str) -> Result<(), JavaError> {
   with_context(|env, context| {
     let action = env
       .get_static_field(
-        "android/content/Intent",
-        "ACTION_VIEW",
-        "Ljava/lang/String;",
+        jni_str!("android/content/Intent"),
+        jni_str!("ACTION_VIEW"),
+        jni_sig!("Ljava/lang/String;"),
       )?
       .l()?;
     let uri = parse_uri(env, url)?;
     let intent = env.new_object(
-      "android/content/Intent",
-      "(Ljava/lang/String;Landroid/net/Uri;)V",
+      jni_str!("android/content/Intent"),
+      jni_sig!("(Ljava/lang/String;Landroid/net/Uri;)V"),
       &[JValue::from(&action), JValue::from(&uri)],
     )?;
     env.call_method(
       &intent,
-      "addFlags",
-      "(I)Landroid/content/Intent;",
+      jni_str!("addFlags"),
+      jni_sig!("(I)Landroid/content/Intent;"),
       &[JValue::Int(FLAG_ACTIVITY_NEW_TASK)],
     )?;
     env.call_method(
       context,
-      "startActivity",
-      "(Landroid/content/Intent;)V",
+      jni_str!("startActivity"),
+      jni_sig!("(Landroid/content/Intent;)V"),
       &[JValue::from(&intent)],
     )?;
     Ok(())
@@ -331,14 +348,14 @@ pub fn open_url(url: &str) -> Result<(), JavaError> {
 // ---- documents -----------------------------------------------------------
 
 fn content_resolver<'local>(
-  env: &mut JNIEnv<'local>,
+  env: &mut Env<'local>,
   context: &JObject<'_>,
 ) -> JniResult<JObject<'local>> {
   env
     .call_method(
       context,
-      "getContentResolver",
-      "()Landroid/content/ContentResolver;",
+      jni_str!("getContentResolver"),
+      jni_sig!("()Landroid/content/ContentResolver;"),
       &[],
     )?
     .l()
@@ -376,8 +393,8 @@ pub fn open_document(uri: &str, mode: DocumentMode) -> Result<File, JavaError> {
     let descriptor = env
       .call_method(
         &resolver,
-        "openFileDescriptor",
-        "(Landroid/net/Uri;Ljava/lang/String;)Landroid/os/ParcelFileDescriptor;",
+        jni_str!("openFileDescriptor"),
+        jni_sig!("(Landroid/net/Uri;Ljava/lang/String;)Landroid/os/ParcelFileDescriptor;"),
         &[JValue::from(&uri), JValue::from(&mode)],
       )?
       .l()?;
@@ -386,7 +403,7 @@ pub fn open_document(uri: &str, mode: DocumentMode) -> Result<File, JavaError> {
     }
     // Hands the descriptor over: Java no longer closes it.
     env
-      .call_method(&descriptor, "detachFd", "()I", &[])?
+      .call_method(&descriptor, jni_str!("detachFd"), jni_sig!("()I"), &[])?
       .i()
       .map(Some)
   })?
@@ -406,13 +423,13 @@ pub fn document_name(uri: &str) -> Result<Option<String>, JavaError> {
     let resolver = content_resolver(env, context)?;
     let uri = parse_uri(env, uri)?;
     let column = env.new_string(DISPLAY_NAME)?;
-    let projection = env.new_object_array(1, "java/lang/String", &column)?;
+    let projection = env.new_object_array(1, jni_str!("java/lang/String"), &column)?;
     let none = JObject::null();
     let cursor = env
       .call_method(
         &resolver,
-        "query",
-        "(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;",
+        jni_str!("query"),
+        jni_sig!("(Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;"),
         &[
           JValue::from(&uri),
           JValue::from(&projection),
@@ -426,20 +443,23 @@ pub fn document_name(uri: &str) -> Result<Option<String>, JavaError> {
       return Ok(None);
     }
     let name = read_first_string(env, &cursor);
-    env.call_method(&cursor, "close", "()V", &[])?;
+    env.call_method(&cursor, jni_str!("close"), jni_sig!("()V"), &[])?;
     name
   })
 }
 
-fn read_first_string(env: &mut JNIEnv<'_>, cursor: &JObject<'_>) -> JniResult<Option<String>> {
-  if !env.call_method(cursor, "moveToFirst", "()Z", &[])?.z()? {
+fn read_first_string(env: &mut Env<'_>, cursor: &JObject<'_>) -> JniResult<Option<String>> {
+  if !env
+    .call_method(cursor, jni_str!("moveToFirst"), jni_sig!("()Z"), &[])?
+    .z()?
+  {
     return Ok(None);
   }
   let value = env
     .call_method(
       cursor,
-      "getString",
-      "(I)Ljava/lang/String;",
+      jni_str!("getString"),
+      jni_sig!("(I)Ljava/lang/String;"),
       &[JValue::Int(0)],
     )?
     .l()?;

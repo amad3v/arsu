@@ -50,6 +50,11 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
   Android's SELinux policy refuses them to apps.
 - The About dialog names the web engine the app runs in, and shows no
   file paths on Android, where they are private to the app.
+- Dependencies updated: `jni` 0.22 (the Android calls ported to its
+  safer API: thread attachment through a closure, which also catches Java
+  exceptions, and names and signatures checked at compile time),
+  `tauri-plugin-single-instance` 2.5, `thiserror` 2.0.21, `uuid` 1.27.
+  Tauri itself still uses `jni` 0.21, so both are built until it moves.
 
 ### Fixed
 
