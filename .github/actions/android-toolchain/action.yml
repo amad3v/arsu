@@ -18,8 +18,10 @@ runs:
         java-version: ${{ env.JAVA_VERSION }}
     - name: Install the Android NDK
       shell: bash
+      # `yes` answers the licence prompts. Not piped: a composite action's
+      # bash runs with pipefail, and `yes` dies of the closed pipe.
       run: |
-        yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+        "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" < <(yes) > /dev/null
         echo "NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
     - name: Install the pinned Rust toolchain and the Android targets
       shell: bash
