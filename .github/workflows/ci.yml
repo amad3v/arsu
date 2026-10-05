@@ -59,6 +59,22 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
+  rust-android:
+    name: Rust for Android (clippy)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The Android-only code (JNI, biometric unlock) compiles only for an
+      # Android target: the Linux job never sees it.
+      - name: Install the pinned Rust toolchain and the Android target
+        run: |
+          rustup toolchain install
+          rustup target add aarch64-linux-android
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - run: cargo clippy --target aarch64-linux-android -p cmd -p biometric -p arsu --locked -- -D warnings
+
   cargo-deny:
     name: Supply chain (cargo-deny)
     runs-on: ubuntu-24.04

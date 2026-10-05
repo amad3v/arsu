@@ -7,7 +7,7 @@ target
 # LeanKG code-graph index (local tool state)
 .leankg/
 planning/
-# Signing keys and their passwords never go in the repo (see RELEASING.md)
+# Signing keys and their passwords never go in the repo
 *.jks
 *.keystore
 keystore.properties

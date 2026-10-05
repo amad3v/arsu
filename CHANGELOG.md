@@ -40,6 +40,10 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
   check is best effort: root hidden from apps goes unseen.
 - The first-start screen warns that uninstalling Arsu, or clearing its
   storage, deletes the vault, and points to the export.
+- Releases are built by GitHub Actions: the Linux binary, `.deb` and
+  `.rpm`, and the Android APK signed with the release key, published with
+  their notes from this file and a `SHA256SUMS`. CI also lints the Android
+  code.
 
 ### Changed
 
