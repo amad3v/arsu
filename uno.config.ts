@@ -21,7 +21,12 @@ export default defineConfig({
   },
   presets: [
     // The preset's own reset (preflight) is the only one loaded.
-    presetWind4({ dark: 'class' }),
+    //
+    // `theme: true` emits every theme variable, in the theme's order. The
+    // default, on demand, emits the used ones in the order the build happens
+    // to meet them, which differs from one build to the next: the CSS, and so
+    // the app, would never be reproducible.
+    presetWind4({ dark: 'class', preflights: { theme: true } }),
     presetIcons({
       scale: 1.2,
       // preset-icons sizes icons with `width/height: 1em` but emits no `display`,

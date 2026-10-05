@@ -70,6 +70,32 @@ abstract class BuildTask : DefaultTask() {
                 args("--release")
             }
             args(listOf("--target", target))
+            environment("CARGO_ENCODED_RUSTFLAGS", rustFlags().joinToString(FLAG_SEPARATOR))
         }.assertNormalExitValue()
+    }
+
+    /**
+     * The caller's rustc flags, plus a `--remap-path-prefix` for the Cargo
+     * and rustup homes: their absolute paths would otherwise end up in the
+     * library (in panic locations), and the APK would differ from one
+     * machine to the next, which F-Droid's reproducible build forbids.
+     * Passed encoded, so that paths with spaces survive.
+     */
+    private fun rustFlags(): List<String> {
+        val home = System.getProperty("user.home")
+        val cargoHome = System.getenv("CARGO_HOME") ?: "$home/.cargo"
+        val rustupHome = System.getenv("RUSTUP_HOME") ?: "$home/.rustup"
+        val callerFlags = System.getenv("CARGO_ENCODED_RUSTFLAGS")
+            ?.takeIf { it.isNotEmpty() }
+            ?.split(FLAG_SEPARATOR)
+            ?: System.getenv("RUSTFLAGS").orEmpty().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        return callerFlags + listOf(
+            "--remap-path-prefix=$cargoHome=/cargo",
+            "--remap-path-prefix=$rustupHome=/rustup",
+        )
+    }
+
+    private companion object {
+        const val FLAG_SEPARATOR = "\u001f"
     }
 }

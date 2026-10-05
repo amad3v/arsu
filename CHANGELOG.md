@@ -3,6 +3,22 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Changed
+
+- **Reproducible Android builds**, for F-Droid: built from the same commit
+  with the same toolchain, the APK is now identical on any machine apart
+  from its signature, so F-Droid can check its own build against ours and
+  publish ours, with one signature everywhere.
+  - The Rust library no longer embeds the build machine's Cargo and rustup
+    paths (in panic locations): the Gradle task that builds it remaps
+    them (`--remap-path-prefix`) to `/cargo` and `/rustup`.
+  - The stylesheet no longer changes from one build to the next: UnoCSS
+    emitted the theme's CSS variables in the order the build happened to
+    meet them, and now emits all of them in the theme's order (about 4 KB
+    more, compressed).
+
 ## [1.1.0] — 2026-10-05
 
 ### Added
