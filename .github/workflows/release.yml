@@ -74,10 +74,18 @@ jobs:
             echo "version=$version"
             echo "publish=$PUBLISH"
           } >> "$GITHUB_OUTPUT"
-      - name: Extract the release notes from CHANGELOG.md
+      - name: Write the release notes
+        # The version's section of CHANGELOG.md, then how to check and
+        # install the downloads (.github/release-install.md).
         env:
           VERSION: ${{ steps.version.outputs.version }}
-        run: .github/scripts/release-notes.sh "$VERSION" > notes.md
+        run: |
+          {
+            .github/scripts/release-notes.sh "$VERSION"
+            echo
+            envsubst "\$VERSION" < .github/release-install.md
+          } > notes.md
+          cat notes.md
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: notes
