@@ -117,10 +117,12 @@ jobs:
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          # Tauri names the bundles after the product (Arsu_…); the release
+          # names them after the package (arsu_…), as before.
           mkdir out
           cp target/release/arsu out/arsu
-          cp "target/release/bundle/deb/arsu_${VERSION}_amd64.deb" out/
-          cp "target/release/bundle/rpm/arsu-${VERSION}-1.x86_64.rpm" out/
+          cp "target/release/bundle/deb/Arsu_${VERSION}_amd64.deb" "out/arsu_${VERSION}_amd64.deb"
+          cp "target/release/bundle/rpm/Arsu-${VERSION}-1.x86_64.rpm" "out/arsu-${VERSION}-1.x86_64.rpm"
           ls -l out
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
