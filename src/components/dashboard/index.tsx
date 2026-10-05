@@ -6,14 +6,13 @@ import {
   Match,
   onCleanup,
   onMount,
-  Show,
   Switch,
 } from 'solid-js';
 
 import { copyCode, lockVault } from '@api';
 import { errorMessage, isAppError } from '@api/lib';
 import { AddEntryDialog } from '@cpt/add-entry-dialog';
-import { APP_NAME } from '@cpt/app-name';
+import { AppTitle } from '@cpt/app-title';
 import { DeleteEntry } from '@cpt/delete-entry';
 import {
   createEntryCode,
@@ -33,7 +32,6 @@ import { scrollFade } from '@cpt/scroll-fade';
 import { SettingsMenu, useSettings } from '@cpt/settings';
 import { secondsLabel } from '@cpt/settings/options';
 import { isTextEntry } from '@cpt/text-entry';
-import { ThemeToggle } from '@cpt/theme-toggle';
 import { toaster } from '@cpt/toaster';
 
 import { createClock } from './create-clock';
@@ -269,12 +267,7 @@ export const Dashboard: Component<DashboardProps> = (props) => {
   return (
     <div ref={setRoot} class={'mx-auto px-4 pt-4 flex flex-col gap-3 h-full max-w-3xl'}>
       <header class={'flex flex-wrap gap-x-3 gap-y-2 items-center'}>
-        <div class={'mr-auto flex gap-2 min-w-0 items-baseline'}>
-          <h1 class={'text-lg font-semibold'}>{APP_NAME}</h1>
-          <Show when={list.state.status === 'ready'}>
-            <p class={'subtle truncate'}>{summary()}</p>
-          </Show>
-        </div>
+        <AppTitle class={'mr-auto'} summary={list.state.status === 'ready' ? summary() : null} />
 
         <div class={'flex gap-2 items-center'}>
           <AddEntryDialog onSuccess={(id) => void showNew([id])} />
@@ -289,7 +282,6 @@ export const Dashboard: Component<DashboardProps> = (props) => {
           />
           <span class={'mx-1 bg-border h-6 w-px'} aria-hidden={'true'} />
           <SettingsMenu />
-          <ThemeToggle />
         </div>
       </header>
 

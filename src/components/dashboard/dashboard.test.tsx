@@ -75,6 +75,17 @@ beforeEach(() => {
 });
 
 describe('Dashboard', () => {
+  it("heads the list with the app's logo, its name and the entry count, as on Android", async () => {
+    await renderDashboard();
+
+    const title = screen.getByRole('heading', { level: 1, name: 'Arsu' });
+    const header = title.closest('header');
+    expect(header?.querySelector('img')).not.toBeNull();
+    expect(header?.textContent).toContain('3 entries');
+    // The theme is chosen in the settings menu, not beside it.
+    expect(screen.queryByRole('button', { name: /^Theme/ })).toBeNull();
+  });
+
   it('lists the entries by issuer, then account, with the search focused', async () => {
     await renderDashboard();
 

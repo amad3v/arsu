@@ -6,10 +6,6 @@ import { appError, mockCommands } from '@cpt/testing/ipc';
 
 import { CreateVaultScreen, UnlockScreen } from '.';
 
-// The screens' theme menu reads the system theme and the settings: not what
-// these tests are about.
-vi.mock('@cpt/theme-toggle', () => ({ ThemeToggle: () => null }));
-
 function passwordInput(label: string): HTMLInputElement {
   return screen.getByLabelText<HTMLInputElement>(label);
 }
@@ -33,6 +29,13 @@ describe('UnlockScreen', () => {
     setLocked(false);
     setLocked(true);
     expect(document.activeElement).toBe(passwordInput('Master password'));
+  });
+
+  it('offers nothing but what unlocks: the theme is chosen in the settings', () => {
+    mockCommands({});
+    render(() => <UnlockScreen onDone={() => undefined} />);
+
+    expect(screen.queryByRole('button', { name: /Theme/ })).toBeNull();
   });
 
   it('focuses the field itself rather than through the autofocus attribute', () => {

@@ -3,7 +3,7 @@ import { createMemo, createSignal, For, mapArray, Match, Show, Switch } from 'so
 import { copyCode, lockVault } from '@api';
 import { errorMessage, isAppError } from '@api/lib';
 import { AddEntryModal } from '@cpt/add-entry-dialog';
-import { APP_NAME } from '@cpt/app-name';
+import { AppTitle } from '@cpt/app-title';
 import { createBackDismiss } from '@cpt/back-dismiss';
 import { createClock } from '@cpt/dashboard/create-clock';
 import { createEntryList } from '@cpt/dashboard/create-entry-list';
@@ -20,8 +20,6 @@ import { useSettings } from '@cpt/settings';
 import { secondsLabel } from '@cpt/settings/options';
 import { Sheet, SheetAction } from '@cpt/sheet';
 import { toaster } from '@cpt/toaster';
-
-import appIcon from '../../assets/app-icon.svg';
 
 import { SettingsPage } from './settings-page';
 import { TouchEntryRow } from './touch-entry-row';
@@ -173,16 +171,10 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
           when={searching()}
           fallback={
             <>
-              <div class={'px-2 flex flex-1 gap-2.5 min-w-0 items-center'}>
-                {/* The app's logo: the icon the user knows from the home screen. */}
-                <img src={appIcon} alt={''} class={'shrink-0 size-8'} />
-                <div class={'flex gap-2 min-w-0 items-baseline'}>
-                  <h1 class={'text-lg font-semibold'}>{APP_NAME}</h1>
-                  <Show when={list.state.status === 'ready'}>
-                    <p class={'subtle truncate'}>{summary()}</p>
-                  </Show>
-                </div>
-              </div>
+              <AppTitle
+                class={'px-2 flex-1'}
+                summary={list.state.status === 'ready' ? summary() : null}
+              />
               <HeaderButton
                 icon={'i-ph-magnifying-glass'}
                 label={'Search entries'}

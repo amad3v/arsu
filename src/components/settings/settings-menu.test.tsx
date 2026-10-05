@@ -29,12 +29,17 @@ async function openSettings() {
 
 describe('SettingsMenu', () => {
   it('lists one entry per setting, each with its current value, then About', async () => {
-    await openSettings();
+    const menu = await openSettings();
 
-    const entries = await screen.findAllByRole('menuitem');
-    expect(entries.map((entry) => entry.textContent)).toEqual([
+    await screen.findAllByRole('menuitem');
+    // The vault's behaviour, the look, then About, each group set apart.
+    const rows = menu.querySelectorAll('[role="menuitem"], [role="separator"]');
+    expect([...rows].map((row) => row.textContent || row.getAttribute('role'))).toEqual([
       'Lock when idle for10 minutes',
       'Clear copied codes after10 seconds',
+      'separator',
+      'Select themeSystem',
+      'separator',
       'About Arsu',
     ]);
     // The values are in the submenus, not listed flat in the one menu.
@@ -59,6 +64,28 @@ describe('SettingsMenu', () => {
     await waitFor(() => {
       expect(calls.filter((call) => call.cmd === 'update_settings').map((c) => c.args)).toEqual([
         { update: { autoLockMinutes: 15 } },
+      ]);
+    });
+  });
+
+  it('chooses the theme in its submenu, each choice with its icon', async () => {
+    await openSettings();
+
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Select theme/ }));
+    const choices = await screen.findAllByRole('menuitemradio');
+    expect(choices.map((choice) => choice.textContent)).toEqual(['Light', 'Dark', 'System']);
+    const icons = ['i-ph-sun', 'i-ph-moon', 'i-ph-monitor'];
+    choices.forEach((choice, index) => {
+      expect(choice.querySelector(`i.${icons[index]}`)).not.toBeNull();
+    });
+    expect(screen.getByRole('menuitemradio', { name: 'System' }).getAttribute('aria-checked')).toBe(
+      'true',
+    );
+
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Dark' }));
+    await waitFor(() => {
+      expect(calls.filter((call) => call.cmd === 'update_settings').map((c) => c.args)).toEqual([
+        { update: { theme: 'dark' } },
       ]);
     });
   });

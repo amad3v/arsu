@@ -7,6 +7,13 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
 
 ### Changed
 
+- On the desktop, the theme is chosen in the settings menu, under
+  **Select theme** (Light, Dark or System), set apart from the vault's
+  settings above it and About below. The lock and create-vault screens
+  no longer offer it: nothing on them but what unlocks. A new install
+  follows the system's theme, as before.
+- The desktop's entry list is headed as Android's is: the app's logo,
+  then "Arsu" and the entry count.
 - On Android, a saved backup is reported the way an import is: the export
   dialog closes and an "Export finished" sheet over the list says the
   backup was saved and that its password must be kept, instead of a

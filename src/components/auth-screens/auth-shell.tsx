@@ -1,7 +1,6 @@
 import { Show } from 'solid-js';
 
 import { scrollFade } from '@cpt/scroll-fade';
-import { ThemeToggle } from '@cpt/theme-toggle';
 import { isTouchUi } from '@cpt/touch-ui';
 
 import appIcon from '../../assets/app-icon.svg';
@@ -23,8 +22,8 @@ const TOUCH_UI = isTouchUi();
  * On the desktop, a card in the middle of the window. In the touch
  * interface, a phone's lock screen: the app's icon and the title in the
  * upper part, the controls in the lower part, within reach of a thumb and
- * just above the keyboard when it opens. The theme is chosen in the
- * settings only: nothing on a lock screen but what unlocks.
+ * just above the keyboard when it opens. On either, the theme is chosen in
+ * the settings only: nothing on a lock screen but what unlocks.
  */
 export const AuthShell: ParentComponent<AuthShellProps> = (props) => {
   return (
@@ -40,20 +39,13 @@ export const AuthShell: ParentComponent<AuthShellProps> = (props) => {
       <Show
         when={TOUCH_UI}
         fallback={
-          <>
-            {/* Floating theme toggle */}
-            <div class={'right-4 top-4 absolute'}>
-              <ThemeToggle />
+          <div class={'p-4 flex min-h-full items-center justify-center'}>
+            <div class={'card max-w-md w-full'}>
+              <h1 class={'text-2xl text-text font-semibold'}>{props.title}</h1>
+              <p class={'subtle mb-6 mt-1'}>{props.subtitle}</p>
+              {props.children}
             </div>
-
-            <div class={'p-4 flex min-h-full items-center justify-center'}>
-              <div class={'card max-w-md w-full'}>
-                <h1 class={'text-2xl text-text font-semibold'}>{props.title}</h1>
-                <p class={'subtle mb-6 mt-1'}>{props.subtitle}</p>
-                {props.children}
-              </div>
-            </div>
-          </>
+          </div>
         }
       >
         <div class={'px-6 pb-8 pt-12 flex flex-col gap-8 min-h-full'}>

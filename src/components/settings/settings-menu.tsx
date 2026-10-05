@@ -5,6 +5,7 @@ import { AUTO_LOCK_MINUTES } from '@api/settings';
 import { AboutDialog } from '@cpt/about-dialog';
 import { APP_NAME } from '@cpt/app-name';
 import { MenuPanel, MenuRadioOption } from '@cpt/menu';
+import { themeIcon, themeLabel } from '@cpt/theme-toggle/data';
 
 import {
   clipboardClearChoices,
@@ -13,13 +14,15 @@ import {
   parseClipboardClearSeconds,
   secondsLabel,
 } from './options';
+import { isTheme, THEMES } from './theme';
 import { useSettings } from './use-settings';
 
-import type { Component } from 'solid-js';
+import type { Component, JSX } from 'solid-js';
 
 /**
  * The header's settings menu: one entry per setting, each opening a submenu
- * of its values, then the About dialog.
+ * of its values (the vault's behaviour, then the look), then the About
+ * dialog.
  */
 export const SettingsMenu: Component = () => {
   const settings = useSettings();
@@ -65,6 +68,20 @@ export const SettingsMenu: Component = () => {
 
           <Menu.Separator class={'menu-separator'} />
 
+          <ChoiceSubmenu
+            label={'Select theme'}
+            icon={'i-ph-palette'}
+            current={settings.values.theme}
+            choices={THEMES}
+            choiceLabel={(theme) => themeLabel[theme]}
+            choiceIcon={(theme) => themeIcon[theme]}
+            onChoose={(value) => {
+              if (isTheme(value)) void settings.update({ theme: value });
+            }}
+          />
+
+          <Menu.Separator class={'menu-separator'} />
+
           <Menu.Item value={'about'} class={'menu-item'} onSelect={() => setAboutOpen(true)}>
             <i class={'i-ph-info text-text-muted size-4'} aria-hidden={'true'} />
             {`About ${APP_NAME}`}
@@ -81,13 +98,15 @@ export const SettingsMenu: Component = () => {
   );
 };
 
-interface ChoiceSubmenuProps {
+interface ChoiceSubmenuProps<T extends string | number> {
   label: string;
   /** A decorative icon class before the label, as every entry of the menu has. */
   icon: string;
-  current: number;
-  choices: readonly number[];
-  choiceLabel: (value: number) => string;
+  current: T;
+  choices: readonly T[];
+  choiceLabel: (value: T) => string;
+  /** A decorative icon class before each value's label, if the values have one. */
+  choiceIcon?: (value: T) => string;
   /** The chosen value, as the menu hands it back: a string. */
   onChoose: (value: string) => void;
 }
@@ -98,24 +117,32 @@ interface ChoiceSubmenuProps {
  * highlight is its own: the values alone (10, 15, 30…) repeat across settings,
  * and items sharing a value in one menu were highlighted together.
  */
-const ChoiceSubmenu: Component<ChoiceSubmenuProps> = (props) => (
-  <Menu.Root lazyMount unmountOnExit>
-    <Menu.TriggerItem class={'menu-item'}>
-      <i class={`${props.icon} text-text-muted size-4`} aria-hidden={'true'} />
-      <span class={'flex-1'}>{props.label}</span>
-      <span class={'text-xs text-text-muted'}>{props.choiceLabel(props.current)}</span>
-      <i class={'i-ph-caret-right text-text-muted size-4'} aria-hidden={'true'} />
-    </Menu.TriggerItem>
+function ChoiceSubmenu<T extends string | number>(props: ChoiceSubmenuProps<T>): JSX.Element {
+  return (
+    <Menu.Root lazyMount unmountOnExit>
+      <Menu.TriggerItem class={'menu-item'}>
+        <i class={`${props.icon} text-text-muted size-4`} aria-hidden={'true'} />
+        <span class={'flex-1'}>{props.label}</span>
+        <span class={'text-xs text-text-muted'}>{props.choiceLabel(props.current)}</span>
+        <i class={'i-ph-caret-right text-text-muted size-4'} aria-hidden={'true'} />
+      </Menu.TriggerItem>
 
-    <MenuPanel>
-      <Menu.RadioItemGroup
-        value={String(props.current)}
-        onValueChange={(details) => props.onChoose(details.value)}
-      >
-        <For each={props.choices}>
-          {(value) => <MenuRadioOption value={String(value)} label={props.choiceLabel(value)} />}
-        </For>
-      </Menu.RadioItemGroup>
-    </MenuPanel>
-  </Menu.Root>
-);
+      <MenuPanel>
+        <Menu.RadioItemGroup
+          value={String(props.current)}
+          onValueChange={(details) => props.onChoose(details.value)}
+        >
+          <For each={props.choices}>
+            {(value) => (
+              <MenuRadioOption
+                value={String(value)}
+                label={props.choiceLabel(value)}
+                icon={props.choiceIcon?.(value)}
+              />
+            )}
+          </For>
+        </Menu.RadioItemGroup>
+      </MenuPanel>
+    </Menu.Root>
+  );
+}
