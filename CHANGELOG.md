@@ -3,6 +3,15 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Changed
+
+- On Android, **Delete** and **Show QR code** in an entry's actions sheet
+  no longer open a full-screen page over it: the actions sheet slides away
+  and the delete's confirmation, or the QR code, rises in a sheet of its
+  own in its place.
+
 ## [1.1.2] — 2026-10-06
 
 ### Fixed

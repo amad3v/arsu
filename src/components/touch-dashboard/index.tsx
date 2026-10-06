@@ -157,11 +157,22 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
     open(true);
   }
 
-  /** Runs one of the actions sheet's actions, once the sheet has closed. */
+  // The chosen action, run once the actions sheet has slid away, so that the
+  // sheet it opens (the delete's confirmation, the QR code) replaces it rather
+  // than rising over it.
+  let pendingAction: (() => void) | null = null;
+
+  /** Closes the actions sheet, then runs one of its actions. */
   function act(run: (item: EntryCode) => void) {
     const item = actionsFor();
     setActionsFor(null);
-    if (item !== null) run(item);
+    if (item !== null) pendingAction = () => run(item);
+  }
+
+  function runPendingAction() {
+    const run = pendingAction;
+    pendingAction = null;
+    run?.();
   }
 
   return (
@@ -286,6 +297,7 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
         open={actionsFor() !== null}
         title={actionsTitle()}
         onClose={() => setActionsFor(null)}
+        onExitComplete={runPendingAction}
       >
         <Show when={actionsFor()?.entry.otpType === 'hotp'}>
           <SheetAction

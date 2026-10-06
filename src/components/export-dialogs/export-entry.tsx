@@ -8,6 +8,7 @@ import { entryLabel } from '@cpt/entry-label';
 import { createFocusOnMount } from '@cpt/focus-on-mount';
 import { Modal } from '@cpt/modal';
 import { PasswordField } from '@cpt/password-field';
+import { SheetModal } from '@cpt/sheet';
 import { isTouchUi } from '@cpt/touch-ui';
 
 import type { BiometricStatus, EntrySummary } from '@app-types/api';
@@ -25,6 +26,9 @@ export interface ExportEntryQrModalProps {
 
 /** Read once: only the touch interface (Android) has biometric unlock. */
 const TOUCH_UI = isTouchUi();
+
+/** The touch interface shows it in a bottom sheet, which replaces the entry's actions sheet. */
+const Frame = TOUCH_UI ? SheetModal : Modal;
 
 /** How long the QR code stays on screen before it hides itself. */
 export const QR_VISIBLE_MS = 60_000;
@@ -45,7 +49,7 @@ export const ExportEntryQrModal: Component<ExportEntryQrModalProps> = (props) =>
   };
 
   return (
-    <Modal
+    <Frame
       open={props.entry !== null}
       title={title()}
       description={"Anyone who scans this QR code can generate this account's codes."}
@@ -62,7 +66,7 @@ export const ExportEntryQrModal: Component<ExportEntryQrModalProps> = (props) =>
           />
         )}
       </Show>
-    </Modal>
+    </Frame>
   );
 };
 
@@ -308,9 +312,9 @@ const QrCode: Component<QrCodeProps> = (props) => {
         class={'p-2 border border-border rounded-lg bg-white size-64'}
       />
       <figcaption class={'subtle text-center'}>
-        {
-          'Scan it with your other authenticator app, then close this dialog. It hides itself after a minute.'
-        }
+        {TOUCH_UI
+          ? 'Scan it with your other authenticator app, then close this sheet. It hides itself after a minute.'
+          : 'Scan it with your other authenticator app, then close this dialog. It hides itself after a minute.'}
       </figcaption>
     </figure>
   );

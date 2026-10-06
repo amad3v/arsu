@@ -8,8 +8,9 @@ import { mockCommands } from '@cpt/testing/ipc';
 import { TouchDashboard } from '.';
 
 import type { CodeResponse, EntrySummary } from '@app-types/api';
+import type { DeleteEntryProps } from '@cpt/delete-entry';
 import type * as ExportDialogs from '@cpt/export-dialogs';
-import type { ExportVaultModalProps } from '@cpt/export-dialogs';
+import type { ExportEntryQrModalProps, ExportVaultModalProps } from '@cpt/export-dialogs';
 import type { CommandCall } from '@cpt/testing/ipc';
 
 // The dialogs belong to their own components and tests; here they render nothing.
@@ -25,9 +26,16 @@ vi.mock('@cpt/export-dialogs', async (importOriginal) => ({
       </button>
     </Show>
   ),
-  ExportEntryQrModal: () => null,
+  // The QR code and delete dialogs only say which entry they were opened for.
+  ExportEntryQrModal: (props: ExportEntryQrModalProps) => (
+    <Show when={props.entry}>{(entry) => <p>{`QR code for ${entry().issuer}`}</p>}</Show>
+  ),
 }));
-vi.mock('@cpt/delete-entry', () => ({ DeleteEntry: () => null }));
+vi.mock('@cpt/delete-entry', () => ({
+  DeleteEntry: (props: DeleteEntryProps) => (
+    <Show when={props.entry}>{(entry) => <p>{`Delete ${entry().issuer}?`}</p>}</Show>
+  ),
+}));
 vi.mock('@cpt/about-dialog', () => ({ AboutDialog: () => null }));
 
 const entries: EntrySummary[] = [
@@ -102,6 +110,20 @@ describe('TouchDashboard', () => {
     expect(within(sheet).getByRole('button', { name: 'Generate the next code' })).toBeTruthy();
     expect(within(sheet).getByRole('button', { name: 'Show QR code' })).toBeTruthy();
     expect(within(sheet).getByRole('button', { name: 'Delete' })).toBeTruthy();
+  });
+
+  it.each([
+    ['Delete', 'Delete GitHub?'],
+    ['Show QR code', 'QR code for GitHub'],
+  ])('replaces the actions sheet with what %s opens', async (action, opened) => {
+    await renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'More actions for GitHub (alice)' }));
+    const sheet = await screen.findByRole('dialog', { name: 'GitHub (alice)' });
+    fireEvent.click(within(sheet).getByRole('button', { name: action }));
+
+    expect(await screen.findByText(opened)).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'GitHub (alice)' })).toBeNull();
   });
 
   it('searches by issuer or account', async () => {
