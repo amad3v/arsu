@@ -50,6 +50,7 @@ export interface ImportModalProps extends ImportDialogProps {
   finalFocusEl?: ModalProps['finalFocusEl'];
   /** Shows the result elsewhere, closing the dialog: see `ImportFlow`. */
   onResult?: (report: ImportReport) => void;
+  onExitComplete?: ModalProps['onExitComplete'];
 }
 
 /** The "Import entries" dialog alone, opened by its caller. */
@@ -60,6 +61,7 @@ export const ImportModal: Component<ImportModalProps> = (props) => (
     description={'Add the accounts from an Aegis vault export or a 2FAS backup, encrypted or not.'}
     onClose={() => props.onClose()}
     finalFocusEl={props.finalFocusEl}
+    onExitComplete={props.onExitComplete}
   >
     <ImportFlow
       onImported={(summary) => props.onImported(summary)}

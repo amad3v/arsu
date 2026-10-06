@@ -110,7 +110,7 @@ const DeleteConfirmation: Component<DeleteConfirmationProps> = (props) => {
       </Show>
 
       <div class={'flex flex-wrap gap-2 justify-end'}>
-        {/* The safe choice takes the initial focus, through the Modal's initialFocusEl. */}
+        {/* The safe choice takes the initial focus, through the dialog's initialFocusEl. */}
         <button
           ref={props.cancelRef}
           class={'btn'}

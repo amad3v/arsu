@@ -1,0 +1,2 @@
+• Every dialog but About is now a bottom sheet, replacing the sheet it was opened from instead of covering it.
+• Requires Android 8.0 or later, with an up-to-date Android System WebView. Android 7 never worked.

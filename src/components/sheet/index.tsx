@@ -7,6 +7,7 @@ import { isTouchUi } from '@cpt/touch-ui';
 
 import './sheet.css';
 
+import type { ModalProps } from '@app-types/ui';
 import type { Component, JSX, ParentComponent } from 'solid-js';
 
 export interface SheetProps {
@@ -14,6 +15,14 @@ export interface SheetProps {
   title: string;
   /** Called when the user dismisses the sheet: a tap outside it, Escape or Back. */
   onClose: () => void;
+  /** A sentence under the title, announced with it. */
+  description?: string;
+  /** The title as a dialog's headline, rather than a menu's quiet label. */
+  headline?: boolean;
+  initialFocusEl?: () => HTMLElement | null;
+  finalFocusEl?: () => HTMLElement | null;
+  /** Called once the sheet has closed and its exit animation has played. */
+  onExitComplete?: () => void;
 }
 
 /**
@@ -34,6 +43,9 @@ export const Sheet: ParentComponent<SheetProps> = (props) => {
       onOpenChange={(details) => {
         if (!details.open) props.onClose();
       }}
+      initialFocusEl={props.initialFocusEl}
+      finalFocusEl={props.finalFocusEl}
+      onExitComplete={() => props.onExitComplete?.()}
       lazyMount
       unmountOnExit
     >
@@ -49,9 +61,20 @@ export const Sheet: ParentComponent<SheetProps> = (props) => {
               class={'mt-2 rounded-full bg-border-strong h-1 w-10 self-center'}
               aria-hidden={'true'}
             />
-            <Dialog.Title class={'text-sm text-text-muted font-medium px-5 pb-1 pt-3'}>
+            <Dialog.Title
+              class={
+                props.headline === true
+                  ? 'text-lg text-text font-semibold px-5 pb-1 pt-3'
+                  : 'text-sm text-text-muted font-medium px-5 pb-1 pt-3'
+              }
+            >
               {props.title}
             </Dialog.Title>
+            <Show when={props.description}>
+              {(description) => (
+                <Dialog.Description class={'subtle px-5 pb-1'}>{description()}</Dialog.Description>
+              )}
+            </Show>
             <div class={'overflow-y-auto'}>{props.children}</div>
           </Dialog.Content>
         </Dialog.Positioner>
@@ -59,6 +82,22 @@ export const Sheet: ParentComponent<SheetProps> = (props) => {
     </Dialog.Root>
   );
 };
+
+/** A dialog as a bottom sheet, with a Modal's props: what Modal shows in the touch interface. */
+export const SheetModal: ParentComponent<ModalProps> = (props) => (
+  <Sheet
+    open={props.open}
+    title={props.title}
+    description={props.description}
+    headline
+    onClose={() => props.onClose()}
+    initialFocusEl={props.initialFocusEl}
+    finalFocusEl={props.finalFocusEl}
+    onExitComplete={() => props.onExitComplete?.()}
+  >
+    <div class={'px-5 pb-3 pt-3'}>{props.children}</div>
+  </Sheet>
+);
 
 export interface SheetActionProps {
   icon: string;

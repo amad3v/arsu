@@ -308,9 +308,9 @@ const QrCode: Component<QrCodeProps> = (props) => {
         class={'p-2 border border-border rounded-lg bg-white size-64'}
       />
       <figcaption class={'subtle text-center'}>
-        {
-          'Scan it with your other authenticator app, then close this dialog. It hides itself after a minute.'
-        }
+        {TOUCH_UI
+          ? 'Scan it with your other authenticator app, then close this sheet. It hides itself after a minute.'
+          : 'Scan it with your other authenticator app, then close this dialog. It hides itself after a minute.'}
       </figcaption>
     </figure>
   );

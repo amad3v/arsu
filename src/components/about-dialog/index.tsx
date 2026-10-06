@@ -48,6 +48,7 @@ export const AboutDialog: Component<AboutDialogProps> = (props) => (
     title={`About ${APP_NAME}`}
     onClose={() => props.onClose()}
     finalFocusEl={props.finalFocusEl}
+    page
   >
     <AboutContent />
   </Modal>

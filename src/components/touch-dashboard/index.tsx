@@ -39,7 +39,8 @@ const COPIED_FEEDBACK_MS = 1_500;
 
 /**
  * The unlocked vault in the touch interface: the desktop dashboard's list,
- * laid out for a phone. A tap on an entry copies its code; its ⋮ button opens
+ * laid out for a phone. Its dialogs are bottom sheets, each replacing the one
+ * it was opened from. A tap on an entry copies its code; its ⋮ button opens
  * the rarer actions in a bottom sheet; the + button adds entries, imports
  * or exports them, and the settings are a page of their own.
  */
@@ -151,17 +152,28 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
     }
   }
 
-  /** Opens one of the + sheet's dialogs, closing the sheet. */
+  // What to open once the sheet or dialog on screen has slid away, so that the
+  // next one (the + sheet's dialogs, an action's sheet, a result) replaces it
+  // rather than rising over it.
+  let next: (() => void) | null = null;
+
+  function openNext() {
+    const open = next;
+    next = null;
+    open?.();
+  }
+
+  /** Opens one of the + sheet's dialogs, once the sheet has closed. */
   function fromPlus(open: (value: boolean) => void) {
     setPlusOpen(false);
-    open(true);
+    next = () => open(true);
   }
 
   /** Runs one of the actions sheet's actions, once the sheet has closed. */
   function act(run: (item: EntryCode) => void) {
     const item = actionsFor();
     setActionsFor(null);
-    if (item !== null) run(item);
+    if (item !== null) next = () => run(item);
   }
 
   return (
@@ -286,6 +298,7 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
         open={actionsFor() !== null}
         title={actionsTitle()}
         onClose={() => setActionsFor(null)}
+        onExitComplete={openNext}
       >
         <Show when={actionsFor()?.entry.otpType === 'hotp'}>
           <SheetAction
@@ -307,7 +320,12 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
         />
       </Sheet>
 
-      <Sheet open={plusOpen()} title={'Add or move entries'} onClose={() => setPlusOpen(false)}>
+      <Sheet
+        open={plusOpen()}
+        title={'Add or move entries'}
+        onClose={() => setPlusOpen(false)}
+        onExitComplete={openNext}
+      >
         <SheetAction
           icon={'i-ph-plus-circle'}
           label={'Add entry'}
@@ -334,8 +352,9 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
         onImported={(summary) => void showNew(summary.importedIds)}
         onResult={(report) => {
           setImportOpen(false);
-          setImportReport(report);
+          next = () => setImportReport(report);
         }}
+        onExitComplete={openNext}
       />
       <Sheet
         open={importReport() !== null}
@@ -355,8 +374,9 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
         onClose={() => setExportOpen(false)}
         onResult={() => {
           setExportOpen(false);
-          setExportSaved(true);
+          next = () => setExportSaved(true);
         }}
+        onExitComplete={openNext}
       />
       <Sheet open={exportSaved()} title={'Export finished'} onClose={() => setExportSaved(false)}>
         <div class={'px-5 pb-3 pt-2'}>

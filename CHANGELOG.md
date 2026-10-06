@@ -3,6 +3,22 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.1.3] — 2026-10-06
+
+### Changed
+
+- On Android, every dialog but About is now a bottom sheet instead of a
+  full-screen page: Delete, Show QR code, Add entry, Import entries,
+  Export encrypted backup, and turning on fingerprint or face unlock. A
+  sheet opened from another (an entry's actions, the + button) or a
+  result after a dialog replaces it: the first slides away, then the next
+  rises, rather than one covering the other.
+- Arsu now **requires Android 8.0** (API 26), with an up-to-date Android
+  System WebView (version 111 or later; tested with 138, the last one
+  Android 8 and 9 get). The APK said Android 7.0, where it crashed at
+  launch: Tauri's Android library needs API 26. On an older WebView the
+  app shows a blank screen.
+
 ## [1.1.2] — 2026-10-06
 
 ### Fixed

@@ -21,6 +21,14 @@ export interface ModalProps {
    * `initialFocusEl` can otherwise get wrong, dropping focus to `<body>`).
    */
   finalFocusEl?: () => HTMLElement | null;
+  /**
+   * In the touch interface, a full-screen page rather than a bottom sheet:
+   * for a dialog that is a place to read in (About), not a question or a
+   * short form.
+   */
+  page?: boolean;
+  /** Called once the dialog has closed and its exit animation has played. */
+  onExitComplete?: () => void;
 }
 
 export interface BaseButtonProps extends Omit<
