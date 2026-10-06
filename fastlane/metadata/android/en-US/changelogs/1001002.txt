@@ -1,0 +1,1 @@
+• The APK no longer carries a dependency metadata block that F-Droid refuses.
