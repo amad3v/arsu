@@ -3,6 +3,14 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.1.2] — 2026-10-06
+
+### Fixed
+
+- The Android APK no longer carries the Android Gradle plugin's
+  "Dependency metadata" signing block (`dependenciesInfo` disabled), which
+  F-Droid refuses: it is encrypted with Google's key and can't be checked.
+
 ## [1.1.1] — 2026-10-06
 
 ### Changed

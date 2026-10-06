@@ -81,6 +81,12 @@ extensions.configure<ApplicationExtension> {
     buildFeatures {
         buildConfig = true
     }
+    // No "Dependency metadata" block in the APK's signing block: it is
+    // encrypted with Google's key, and F-Droid refuses APKs that carry it.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
+    }
 }
 
 kotlin {
