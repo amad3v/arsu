@@ -1,0 +1,2 @@
+• An "Export finished" sheet reports a saved backup, as imports are reported, instead of a page of its own.
+• Reproducible builds: the APK built from source is identical to the published one apart from its signature.

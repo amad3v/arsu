@@ -39,7 +39,12 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
     for F-Droid to read; the release workflow checks it is the one Tauri
     derives from the version (major × 1000000 + minor × 1000 + patch).
 - F-Droid's listing (name, summary, description, icon) lives in
-  `fastlane/metadata/android/en-US`.
+  `fastlane/metadata/android/en-US`, with each version's "what's new" in
+  its `changelogs/`.
+- Android's own Java and Kotlin code (the app and the biometric plugin)
+  targets Java 17 instead of 8, and is configured through the Android
+  Gradle plugin's DSL interfaces: our build files no longer raise Gradle
+  deprecation warnings.
 
 ## [1.1.0] — 2026-10-05
 
