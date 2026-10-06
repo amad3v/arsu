@@ -1,6 +1,6 @@
 {
   "name": "arsu",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Offline TOTP/HOTP authenticator for Linux and Android, with an encrypted local vault.",
   "license": "MIT",
   "type": "module",
