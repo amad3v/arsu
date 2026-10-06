@@ -11,7 +11,7 @@ sha256sum --check --ignore-missing SHA256SUMS
 - Debian, Ubuntu: `sudo apt install ./arsu_${VERSION}_amd64.deb`
 - Fedora, openSUSE: `sudo dnf install ./arsu-${VERSION}-1.x86_64.rpm`
 - Arch Linux: `arsu` (built from source) or `arsu-bin` (this release's binary) on the AUR
-- Android 7 or later: `arsu-${VERSION}.apk`. Its signing certificate's SHA-256 is
+- Android 8.0 or later, with an up-to-date Android System WebView: `arsu-${VERSION}.apk`. Its signing certificate's SHA-256 is
   `01:0E:E6:98:8E:6E:92:29:84:01:67:D4:19:8F:4B:B2:E9:BC:5F:93:29:AA:11:FC:61:C0:6B:CB:32:E7:32:9B`
   (`apksigner verify --print-certs`, or an app such as AppVerifier, shows it).
 

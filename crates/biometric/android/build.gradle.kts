@@ -11,7 +11,7 @@ extensions.configure<LibraryExtension> {
     compileSdk = 36
 
     defaultConfig {
-        minSdk = 24
+        minSdk = 26
         consumerProguardFiles("consumer-rules.pro")
     }
 

@@ -13,4 +13,6 @@
 <li><b>Light and dark themes</b>, or following the system.</li>
 </ul>
 
+<p>Requires Android 8.0 or later, with an up-to-date Android System WebView.</p>
+
 <p>Arsu is also available for the Linux desktop, from the same code.</p>

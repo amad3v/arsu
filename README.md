@@ -55,7 +55,7 @@ yay -S arsu   # or arsu-bin; any AUR helper, or git clone + makepkg
 
 ### Android
 
-There is no release package for Android yet: build it from source (see [Building for Android](#building-for-android)). Android 7.0 (API 24) or later.
+Each [release](https://github.com/amad3v/arsu/releases) has the APK, `arsu-<version>.apk`; or build it from source (see [Building for Android](#building-for-android)). It needs Android 8.0 (API 26) or later, with an up-to-date Android System WebView (version 111 or later; tested with 138, the last one Android 8 and 9 get).
 
 ## Your data
 

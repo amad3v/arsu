@@ -11,6 +11,11 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
   no longer open a full-screen page over it: the actions sheet slides away
   and the delete's confirmation, or the QR code, rises in a sheet of its
   own in its place.
+- Arsu now **requires Android 8.0** (API 26), with an up-to-date Android
+  System WebView (version 111 or later; tested with 138, the last one
+  Android 8 and 9 get). The APK said Android 7.0, where it crashed at
+  launch: Tauri's Android library needs API 26. On an older WebView the
+  app shows a blank screen.
 
 ## [1.1.2] — 2026-10-06
 
