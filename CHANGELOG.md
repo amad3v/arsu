@@ -7,10 +7,12 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
 
 ### Changed
 
-- On Android, **Delete** and **Show QR code** in an entry's actions sheet
-  no longer open a full-screen page over it: the actions sheet slides away
-  and the delete's confirmation, or the QR code, rises in a sheet of its
-  own in its place.
+- On Android, every dialog but About is now a bottom sheet instead of a
+  full-screen page: Delete, Show QR code, Add entry, Import entries,
+  Export encrypted backup, and turning on fingerprint or face unlock. A
+  sheet opened from another (an entry's actions, the + button) or a
+  result after a dialog replaces it: the first slides away, then the next
+  rises, rather than one covering the other.
 - Arsu now **requires Android 8.0** (API 26), with an up-to-date Android
   System WebView (version 111 or later; tested with 138, the last one
   Android 8 and 9 get). The APK said Android 7.0, where it crashed at

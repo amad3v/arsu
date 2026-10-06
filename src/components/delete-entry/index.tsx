@@ -5,8 +5,6 @@ import { errorMessage, isAppError } from '@api/lib';
 import { createDialogSubject } from '@cpt/dialog-subject';
 import { entryLabel } from '@cpt/entry-label';
 import { Modal } from '@cpt/modal';
-import { SheetModal } from '@cpt/sheet';
-import { isTouchUi } from '@cpt/touch-ui';
 
 import type { EntrySummary } from '@app-types/api';
 import type { Component } from 'solid-js';
@@ -20,12 +18,6 @@ export interface DeleteEntryProps {
   /** Where to return focus once the dialog closes: the row's ⋮ menu, or the search field once the row is gone. */
   finalFocusEl?: () => HTMLElement | null;
 }
-
-/**
- * Read once: the touch interface asks in a bottom sheet, which replaces the
- * entry's actions sheet, rather than in a full-screen page.
- */
-const Frame = isTouchUi() ? SheetModal : Modal;
 
 /**
  * Asks before deleting an entry. The app has no way to bring an entry back,
@@ -42,7 +34,7 @@ export const DeleteEntry: Component<DeleteEntryProps> = (props) => {
   };
 
   return (
-    <Frame
+    <Modal
       open={props.entry !== null}
       title={title()}
       description={
@@ -66,7 +58,7 @@ export const DeleteEntry: Component<DeleteEntryProps> = (props) => {
           />
         )}
       </Show>
-    </Frame>
+    </Modal>
   );
 };
 

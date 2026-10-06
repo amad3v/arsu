@@ -49,6 +49,7 @@ export interface ExportVaultModalProps {
    * `ExportSaved`). Without it, the dialog shows the result itself.
    */
   onResult?: () => void;
+  onExitComplete?: ModalProps['onExitComplete'];
 }
 
 /** The "Export encrypted backup" dialog alone, opened by its caller. */
@@ -63,6 +64,7 @@ export const ExportVaultModal: Component<ExportVaultModalProps> = (props) => {
       onClose={() => props.onClose()}
       initialFocusEl={() => passwordInput() ?? null}
       finalFocusEl={props.finalFocusEl}
+      onExitComplete={props.onExitComplete}
     >
       <ExportVaultForm
         onDone={() => props.onClose()}

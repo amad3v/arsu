@@ -83,12 +83,7 @@ export const Sheet: ParentComponent<SheetProps> = (props) => {
   );
 };
 
-/**
- * A dialog as a bottom sheet: what the touch interface shows for a short
- * question or result that follows from a sheet, such as a delete's
- * confirmation, instead of a full-screen page. It takes a Modal's props, so a
- * dialog can pick either once, at start-up.
- */
+/** A dialog as a bottom sheet, with a Modal's props: what Modal shows in the touch interface. */
 export const SheetModal: ParentComponent<ModalProps> = (props) => (
   <Sheet
     open={props.open}
@@ -98,6 +93,7 @@ export const SheetModal: ParentComponent<ModalProps> = (props) => (
     onClose={() => props.onClose()}
     initialFocusEl={props.initialFocusEl}
     finalFocusEl={props.finalFocusEl}
+    onExitComplete={() => props.onExitComplete?.()}
   >
     <div class={'px-5 pb-3 pt-3'}>{props.children}</div>
   </Sheet>

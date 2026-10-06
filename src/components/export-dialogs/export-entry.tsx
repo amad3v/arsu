@@ -8,7 +8,6 @@ import { entryLabel } from '@cpt/entry-label';
 import { createFocusOnMount } from '@cpt/focus-on-mount';
 import { Modal } from '@cpt/modal';
 import { PasswordField } from '@cpt/password-field';
-import { SheetModal } from '@cpt/sheet';
 import { isTouchUi } from '@cpt/touch-ui';
 
 import type { BiometricStatus, EntrySummary } from '@app-types/api';
@@ -26,9 +25,6 @@ export interface ExportEntryQrModalProps {
 
 /** Read once: only the touch interface (Android) has biometric unlock. */
 const TOUCH_UI = isTouchUi();
-
-/** The touch interface shows it in a bottom sheet, which replaces the entry's actions sheet. */
-const Frame = TOUCH_UI ? SheetModal : Modal;
 
 /** How long the QR code stays on screen before it hides itself. */
 export const QR_VISIBLE_MS = 60_000;
@@ -49,7 +45,7 @@ export const ExportEntryQrModal: Component<ExportEntryQrModalProps> = (props) =>
   };
 
   return (
-    <Frame
+    <Modal
       open={props.entry !== null}
       title={title()}
       description={"Anyone who scans this QR code can generate this account's codes."}
@@ -66,7 +62,7 @@ export const ExportEntryQrModal: Component<ExportEntryQrModalProps> = (props) =>
           />
         )}
       </Show>
-    </Frame>
+    </Modal>
   );
 };
 

@@ -8,20 +8,33 @@ import { mockCommands } from '@cpt/testing/ipc';
 import { TouchDashboard } from '.';
 
 import type { CodeResponse, EntrySummary } from '@app-types/api';
+import type { AddEntryModalProps } from '@cpt/add-entry-dialog';
 import type { DeleteEntryProps } from '@cpt/delete-entry';
 import type * as ExportDialogs from '@cpt/export-dialogs';
 import type { ExportEntryQrModalProps, ExportVaultModalProps } from '@cpt/export-dialogs';
 import type { CommandCall } from '@cpt/testing/ipc';
 
 // The dialogs belong to their own components and tests; here they render nothing.
-vi.mock('@cpt/add-entry-dialog', () => ({ AddEntryModal: () => null }));
+vi.mock('@cpt/add-entry-dialog', () => ({
+  AddEntryModal: (props: AddEntryModalProps) => (
+    <Show when={props.open}>
+      <p>{'Add entry dialog'}</p>
+    </Show>
+  ),
+}));
 vi.mock('@cpt/import-dialog', () => ({ ImportModal: () => null }));
-// The export dialog is only a button that reports a saved backup.
+// The export dialog is only a button that reports a saved backup, and closes.
 vi.mock('@cpt/export-dialogs', async (importOriginal) => ({
   ...(await importOriginal<typeof ExportDialogs>()),
   ExportVaultModal: (props: ExportVaultModalProps) => (
     <Show when={props.open}>
-      <button type={'button'} onClick={() => props.onResult?.()}>
+      <button
+        type={'button'}
+        onClick={() => {
+          props.onResult?.();
+          props.onExitComplete?.();
+        }}
+      >
         {'Save the backup'}
       </button>
     </Show>
@@ -152,6 +165,17 @@ describe('TouchDashboard', () => {
     const page = await screen.findByRole('dialog', { name: 'Settings' });
     expect(within(page).queryByRole('button', { name: /Import entries/ })).toBeNull();
     expect(within(page).queryByRole('button', { name: /Export/ })).toBeNull();
+  });
+
+  it('replaces the + sheet with the dialog it opens', async () => {
+    await renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add, import or export' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add or move entries' });
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Add entry/ }));
+
+    expect(await screen.findByText('Add entry dialog')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Add or move entries' })).toBeNull();
   });
 
   it('says a saved backup in a sheet, as an import, once its dialog closes', async () => {
