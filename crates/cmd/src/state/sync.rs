@@ -270,7 +270,7 @@ impl AppState {
     let mut session = self.session();
     session.commit(&storage, VaultStorage::save, |payload| {
       let pairing = match &received.invitation {
-        Some(secret) if invitation::consume(&mut payload.sync, secret) => true,
+        Some(secret) if invitation::consume(&mut payload.sync, secret, now) => true,
         Some(_) => return Err(AppError::SyncFile(file::FileError::NoInvitation)),
         None if devices::is_trusted(&payload.sync.devices, &received.sender) => false,
         None => return Err(AppError::UntrustedDevice),

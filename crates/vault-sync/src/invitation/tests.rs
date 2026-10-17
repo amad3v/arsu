@@ -203,9 +203,18 @@ fn an_invitation_is_used_once() {
   let mut state = state_with_identity();
   let invitation = open(&mut state, 1).unwrap();
 
-  assert!(consume(&mut state, &invitation.secret));
-  assert!(!consume(&mut state, &invitation.secret));
+  assert!(consume(&mut state, &invitation.secret, 1));
+  assert!(!consume(&mut state, &invitation.secret, 1));
   assert!(open_secrets(&state, 1).is_empty());
+}
+
+#[test]
+fn an_expired_invitation_cannot_be_used() {
+  let mut state = state_with_identity();
+  let invitation = open(&mut state, 1_000).unwrap();
+
+  assert!(!consume(&mut state, &invitation.secret, 1_001 + LIFETIME));
+  assert!(state.invitations.is_empty(), "it is dropped all the same");
 }
 
 #[test]

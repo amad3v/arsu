@@ -866,20 +866,20 @@ pub fn start_bluetooth_sync(app: AppHandle, state: State<'_, AppState>) -> Resul
 /// Bluetooth support at all.
 #[tauri::command]
 pub async fn start_bluetooth_pairing(app: AppHandle) -> Result<SyncInvitation, AppError> {
-  let (invitation, shown) = with_state(app.clone(), |state| {
+  let (invitation, expires_at, shown) = with_state(app.clone(), |state| {
     let (invitation, expires_at) = state.create_invitation()?;
     let shown = SyncInvitation::new(&invitation, expires_at)?;
-    Ok((invitation, shown))
+    Ok((invitation, expires_at, shown))
   })
   .await?;
   #[cfg(any(target_os = "linux", target_os = "android"))]
   {
-    bluetooth::start_pairing(&app, invitation);
+    bluetooth::start_pairing(&app, invitation, expires_at);
     Ok(shown)
   }
   #[cfg(not(any(target_os = "linux", target_os = "android")))]
   {
-    let _ = (invitation, shown);
+    let _ = (invitation, expires_at, shown);
     Err(AppError::BluetoothUnsupported)
   }
 }

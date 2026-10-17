@@ -23,7 +23,9 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
   - Pairing over Bluetooth works the same between any two devices: the
     inviting one waits, the other scans its QR code (a computer types
     its code). Phones pair with each other directly, without a join
-    file.
+    file. An invitation is good for one pairing within 15 minutes: the
+    inviting device stops waiting when it expires, and a device that
+    connects later gets nothing from the vault.
   - A new device joins through any one of yours, and the others learn of
     it at their next sync with a device that knows it: a computer added
     to your phones pairs with one of them, and syncs with each other

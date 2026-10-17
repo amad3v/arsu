@@ -343,7 +343,7 @@ async fn a_waiting_device_serves_each_paired_device_in_turn() {
 async fn a_waiting_device_advertises_its_invitation_and_pairs() {
   let (waiting, joining) = (Fixture::unlocked(), Fixture::unlocked());
   waiting.add_account("alice");
-  let (invitation, _) = waiting.state.create_invitation().unwrap();
+  let (invitation, expires_at) = waiting.state.create_invitation().unwrap();
   let token = advertisement_token(&invitation.secret);
   let (central_end, peripheral_end) = wires(185);
   let central = FakeCentral::new(vec![device("waiting", Some(token))], Some(central_end));
@@ -352,9 +352,15 @@ async fn a_waiting_device_advertises_its_invitation_and_pairs() {
   let code = invitation.code();
 
   let ((), joined) = tokio::join!(
-    serve_pairing(&waiting.state, &mut peripheral, invitation, |report| {
-      reports.push(report);
-    }),
+    serve_pairing(
+      &waiting.state,
+      &mut peripheral,
+      invitation,
+      expires_at,
+      |report| {
+        reports.push(report);
+      }
+    ),
     join(&joining.state, &central, &code),
   );
 
@@ -362,6 +368,29 @@ async fn a_waiting_device_advertises_its_invitation_and_pairs() {
   assert_eq!(reports.kinds(), [Ok(true)]);
   assert_eq!(peripheral.advertised, [Advertising::Pairing(token)]);
   assert_eq!(joining.labels(), ["alice"]);
+}
+
+#[tokio::test(start_paused = true)]
+async fn waiting_with_an_invitation_ends_when_it_expires() {
+  let waiting = Fixture::unlocked();
+  let (invitation, expires_at) = waiting.state.create_invitation().unwrap();
+  // A central that connects but never writes.
+  let (_central_end, peripheral_end) = wires(185);
+  let mut peripheral = FakePeripheral::new([peripheral_end]);
+  let reports = Reports::default();
+
+  serve_pairing(
+    &waiting.state,
+    &mut peripheral,
+    invitation,
+    expires_at,
+    |report| {
+      reports.push(report);
+    },
+  )
+  .await;
+
+  assert_eq!(reports.kinds(), [Err(AppErrorKind::NoMatchingInvitation)]);
 }
 
 /// Phones only, then a computer: it pairs with one phone, and the others
@@ -378,14 +407,20 @@ async fn a_computer_joins_phones_through_any_one_of_them() {
   phone_b.add_account("bob");
   // Phone A waits with an invitation; the computer, which has no camera,
   // types its code.
-  let (invitation, _) = phone_a.state.create_invitation().unwrap();
+  let (invitation, expires_at) = phone_a.state.create_invitation().unwrap();
   let token = advertisement_token(&invitation.secret);
   let (central_end, peripheral_end) = wires(185);
   let central = FakeCentral::new(vec![device("phone A", Some(token))], Some(central_end));
   let mut peripheral = FakePeripheral::new([peripheral_end]);
   let code = invitation.code();
   let ((), joined) = tokio::join!(
-    serve_pairing(&phone_a.state, &mut peripheral, invitation, |_| {}),
+    serve_pairing(
+      &phone_a.state,
+      &mut peripheral,
+      invitation,
+      expires_at,
+      |_| {}
+    ),
     join(&computer.state, &central, &code),
   );
   assert!(joined.unwrap().paired);

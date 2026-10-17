@@ -224,14 +224,17 @@ pub fn open_secrets(state: &SyncState, now: u64) -> Vec<PairingSecret> {
     .collect()
 }
 
-/// Uses up the invitation with this secret. Returns whether it was open.
-pub fn consume(state: &mut SyncState, secret: &PairingSecret) -> bool {
+/// Uses up the invitation with this secret. Returns whether it was still
+/// valid at `now`; an expired one is dropped all the same.
+pub fn consume(state: &mut SyncState, secret: &PairingSecret, now: u64) -> bool {
   let secret: SecretBytes = secret.expose().to_vec().into();
-  let before = state.invitations.len();
-  state
-    .invitations
-    .retain(|invitation| invitation.secret != secret);
-  state.invitations.len() < before
+  let mut valid = false;
+  state.invitations.retain(|invitation| {
+    let used = invitation.secret == secret;
+    valid |= used && invitation.expires_at >= now;
+    !used
+  });
+  valid
 }
 
 /// Decodes Crockford base32 into a zeroizing buffer.

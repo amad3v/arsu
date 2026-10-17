@@ -135,18 +135,15 @@ impl AppState {
     peer: &mut impl ChunkPeer,
     att_mtu: usize,
   ) -> Result<SyncSummary, AppError> {
-    let (identity, snapshot) = self.live_snapshot(role)?;
-    log::info!(
-      role = role.label(),
-      device:% = identity.public_key.fingerprint(),
-      trusted_devices = devices::trusted(&snapshot.devices).count();
-      "snapshot ready"
-    );
     let (mut link, pending) = if role.initiates() {
+      let (identity, snapshot) = self.live_snapshot(role)?;
       GattLink::new(role.mode(), &identity, snapshot, att_mtu)?
     } else {
-      // The responder learns the MTU from the central's first write.
+      // The responder learns the MTU from the central's first write, and
+      // decrypts its snapshot only then: the wait can be long, and the
+      // vault may lock or the invitation expire meanwhile.
       let (chunk, mtu) = peer.next_chunk().await.ok_or(AppError::Disconnected)?;
+      let (identity, snapshot) = self.live_snapshot(role)?;
       let (mut link, mut outputs) = GattLink::new(role.mode(), &identity, snapshot, mtu)?;
       outputs.extend(link.receive(&chunk)?);
       (link, outputs)
@@ -182,10 +179,21 @@ impl AppState {
 
   /// This device's identity and snapshot for a session. Pairing lists
   /// this device in its own device set first, so the peer learns its
-  /// name.
+  /// name; inviting, only while the invitation is still open.
   fn live_snapshot(&self, role: &LiveRole) -> Result<(DeviceIdentity, Snapshot), AppError> {
     let identity = self.sync_identity()?;
     let now = unix_now()?;
+    if let LiveRole::Invite(invitation) = role {
+      let open = {
+        let session = self.session();
+        invitation::open_secrets(&session.unlocked()?.payload.sync, now)
+      };
+      if !open.iter().any(|secret| secret == &invitation.secret) {
+        return Err(AppError::SyncFile(
+          vault_sync::file::FileError::NoInvitation,
+        ));
+      }
+    }
     let storage = self.storage()?;
     let mut session = self.session();
     session.record_activity();
@@ -197,7 +205,15 @@ impl AppState {
     } else {
       Ok(local_snapshot(&session.unlocked()?.payload, &identity))
     }
-    .map(|snapshot| (identity, snapshot))
+    .map(|snapshot| {
+      log::info!(
+        role = role.label(),
+        device:% = identity.public_key.fingerprint(),
+        trusted_devices = devices::trusted(&snapshot.devices).count();
+        "snapshot ready"
+      );
+      (identity, snapshot)
+    })
   }
 
   /// Merges the peer's snapshot and saves the vault. The session already
@@ -216,7 +232,7 @@ impl AppState {
     session.commit(&storage, VaultStorage::save, |payload| {
       match role {
         LiveRole::Invite(invitation) => {
-          if !invitation::consume(&mut payload.sync, &invitation.secret) {
+          if !invitation::consume(&mut payload.sync, &invitation.secret, now) {
             return Err(AppError::SyncFile(
               vault_sync::file::FileError::NoInvitation,
             ));

@@ -26,12 +26,14 @@ use std::{
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, async_runtime::JoinHandle};
 use vault_sync::{
+  file::FileError,
   gatt::Advertising,
   invitation::{self, Invitation, TOKEN_LEN, advertisement_token},
 };
 
 use crate::{
   AppState,
+  clock::unix_now,
   diagnostics::{self, MaskedAddress},
   dto::{NearbyDevice, SyncSummary},
   error::{AppError, AppErrorKind},
@@ -204,7 +206,7 @@ pub fn start_sync(app: &AppHandle) {
 /// Starts waiting in the background for the device that reads `invitation`,
 /// and pairs with it.
 #[cfg(any(target_os = "linux", target_os = "android"))]
-pub fn start_pairing(app: &AppHandle, invitation: Invitation) {
+pub fn start_pairing(app: &AppHandle, invitation: Invitation, expires_at: u64) {
   let task = tauri::async_runtime::spawn({
     let app = app.clone();
     async move {
@@ -215,6 +217,7 @@ pub fn start_pairing(app: &AppHandle, invitation: Invitation) {
             &app.state::<AppState>(),
             &mut peripheral,
             invitation,
+            expires_at,
             report,
           )
           .await;
@@ -262,21 +265,30 @@ pub(crate) async fn serve_sync(
 }
 
 /// Waits for the device that read `invitation`, pairs with it, and reports
-/// the session.
+/// the session. Waiting ends when the invitation expires, at `expires_at`
+/// (Unix seconds).
 pub(crate) async fn serve_pairing(
   state: &AppState,
   peripheral: &mut impl Peripheral,
   invitation: Invitation,
+  expires_at: u64,
   report: impl Fn(SessionReport),
 ) {
   let token = advertisement_token(&invitation.secret);
-  let outcome = serve_one(
-    state,
-    peripheral,
-    Advertising::Pairing(token),
-    LiveRole::Invite(invitation),
-  )
-  .await;
+  let outcome = match unix_now() {
+    Ok(now) => tokio::time::timeout(
+      Duration::from_secs(expires_at.saturating_sub(now)),
+      serve_one(
+        state,
+        peripheral,
+        Advertising::Pairing(token),
+        LiveRole::Invite(invitation),
+      ),
+    )
+    .await
+    .unwrap_or(Err(AppError::SyncFile(FileError::NoInvitation))),
+    Err(error) => Err(error),
+  };
   report(SessionReport::of(outcome));
 }
 
