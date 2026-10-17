@@ -25,7 +25,8 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
     its code). Phones pair with each other directly, without a join
     file. An invitation is good for one pairing within 15 minutes: the
     inviting device stops waiting when it expires, and a device that
-    connects later gets nothing from the vault. Locking the vault, by
+    connects later gets nothing from the vault. A device that connects
+    without the invitation does not end the wait. Locking the vault, by
     hand or automatically, stops Bluetooth sync and pairing.
   - A new device joins through any one of yours, and the others learn of
     it at their next sync with a device that knows it: a computer added

@@ -265,8 +265,9 @@ pub(crate) async fn serve_sync(
 }
 
 /// Waits for the device that read `invitation`, pairs with it, and reports
-/// the session. Waiting ends when the invitation expires, at `expires_at`
-/// (Unix seconds).
+/// the pairing. A device that connects and fails (one without the
+/// invitation, say) does not end the wait; the invitation expiring, at
+/// `expires_at` (Unix seconds), does.
 pub(crate) async fn serve_pairing(
   state: &AppState,
   peripheral: &mut impl Peripheral,
@@ -275,18 +276,24 @@ pub(crate) async fn serve_pairing(
   report: impl Fn(SessionReport),
 ) {
   let token = advertisement_token(&invitation.secret);
-  let outcome = match unix_now() {
-    Ok(now) => tokio::time::timeout(
-      Duration::from_secs(expires_at.saturating_sub(now)),
-      serve_one(
+  let pairing = async {
+    loop {
+      let outcome = serve_one(
         state,
         peripheral,
         Advertising::Pairing(token),
-        LiveRole::Invite(invitation),
-      ),
-    )
-    .await
-    .unwrap_or(Err(AppError::SyncFile(FileError::NoInvitation))),
+        LiveRole::Invite(invitation.clone()),
+      )
+      .await;
+      if outcome.is_ok() || !serve_next(&outcome) {
+        return outcome;
+      }
+    }
+  };
+  let outcome = match unix_now() {
+    Ok(now) => tokio::time::timeout(Duration::from_secs(expires_at.saturating_sub(now)), pairing)
+      .await
+      .unwrap_or(Err(AppError::SyncFile(FileError::NoInvitation))),
     Err(error) => Err(error),
   };
   report(SessionReport::of(outcome));

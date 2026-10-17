@@ -370,6 +370,38 @@ async fn a_waiting_device_advertises_its_invitation_and_pairs() {
   assert_eq!(joining.labels(), ["alice"]);
 }
 
+#[tokio::test]
+async fn a_device_that_fails_does_not_end_the_wait_for_the_invited_one() {
+  let (waiting, joining) = (Fixture::unlocked(), Fixture::unlocked());
+  let (invitation, expires_at) = waiting.state.create_invitation().unwrap();
+  let token = advertisement_token(&invitation.secret);
+  // A first central connects and leaves without a word.
+  let (stranger, first) = wires(185);
+  drop(stranger);
+  let (central_end, peripheral_end) = wires(185);
+  let central = FakeCentral::new(vec![device("waiting", Some(token))], Some(central_end));
+  let mut peripheral = FakePeripheral::new([first, peripheral_end]);
+  let reports = Reports::default();
+  let code = invitation.code();
+
+  let ((), joined) = tokio::join!(
+    serve_pairing(
+      &waiting.state,
+      &mut peripheral,
+      invitation,
+      expires_at,
+      |report| {
+        reports.push(report);
+      }
+    ),
+    join(&joining.state, &central, &code),
+  );
+
+  assert!(joined.unwrap().paired);
+  assert_eq!(reports.kinds(), [Ok(true)], "only the pairing is reported");
+  assert_eq!(peripheral.advertised, [Advertising::Pairing(token); 2]);
+}
+
 #[tokio::test(start_paused = true)]
 async fn waiting_with_an_invitation_ends_when_it_expires() {
   let waiting = Fixture::unlocked();
