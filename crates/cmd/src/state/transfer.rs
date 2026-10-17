@@ -116,7 +116,7 @@ impl AppState {
     let known: KnownAccounts = {
       let mut session = self.session();
       session.record_activity();
-      session.unlocked()?.payload.active_entries().collect()
+      session.unlocked()?.payload.entries.iter().collect()
     };
     let file = pending.file.read(MAX_IMPORT_BYTES)?;
     // Told again from what was just read, not from the pick: the file may
@@ -202,12 +202,7 @@ impl AppState {
     let entries: Vec<Entry> = {
       let mut session = self.session();
       session.record_activity();
-      session
-        .unlocked()?
-        .payload
-        .active_entries()
-        .cloned()
-        .collect()
+      session.unlocked()?.payload.entries.clone()
     };
     // scrypt; no lock is held meanwhile.
     let export = aegis::export(&entries, password.expose())?;
@@ -340,8 +335,8 @@ mod tests {
       .unlocked()
       .unwrap()
       .payload
-      .active_entries()
-      .next()
+      .entries
+      .first()
       .cloned()
       .unwrap();
     assert_eq!(entry.issuer.as_deref(), Some("Bank"));

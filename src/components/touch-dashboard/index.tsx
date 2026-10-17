@@ -1,6 +1,6 @@
 import { createMemo, createSignal, For, mapArray, Match, Show, Switch } from 'solid-js';
 
-import { copyCode, lockVault } from '@api';
+import { addEntryFromUri, copyCode, lockVault } from '@api';
 import { errorMessage, isAppError } from '@api/lib';
 import { AddEntryModal } from '@cpt/add-entry-dialog';
 import { AppTitle } from '@cpt/app-title';
@@ -16,6 +16,7 @@ import { ErrorPanel } from '@cpt/error-panel';
 import { ExportEntryQrModal, ExportSaved, ExportVaultModal } from '@cpt/export-dialogs';
 import { countLabel } from '@cpt/format';
 import { ImportModal, ImportResult } from '@cpt/import-dialog';
+import { QrScanner } from '@cpt/qr-scanner';
 import { useSettings } from '@cpt/settings';
 import { secondsLabel } from '@cpt/settings/options';
 import { Sheet, SheetAction } from '@cpt/sheet';
@@ -70,6 +71,7 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
 
   const [plusOpen, setPlusOpen] = createSignal(false);
   const [addOpen, setAddOpen] = createSignal(false);
+  const [scanOpen, setScanOpen] = createSignal(false);
   const [importOpen, setImportOpen] = createSignal(false);
   // What the last import did, shown in a sheet over the list it changed.
   const [importReport, setImportReport] = createSignal<ImportReport | null>(null);
@@ -136,6 +138,24 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
       toaster.create({
         type: 'error',
         title: "The vault couldn't be locked",
+        description: errorMessage(err),
+      });
+    }
+  }
+
+  /** Adds the account in a scanned QR code. */
+  async function addScanned(uri: string) {
+    setScanOpen(false);
+    try {
+      await showNew([await addEntryFromUri(uri)]);
+    } catch (err) {
+      if (isAppError(err, 'Locked')) {
+        props.onLocked();
+        return;
+      }
+      toaster.create({
+        type: 'error',
+        title: "The account couldn't be added",
         description: errorMessage(err),
       });
     }
@@ -327,6 +347,12 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
         onExitComplete={openNext}
       >
         <SheetAction
+          icon={'i-ph-scan'}
+          label={'Scan QR code'}
+          description={'With the camera'}
+          onSelect={() => fromPlus(setScanOpen)}
+        />
+        <SheetAction
           icon={'i-ph-plus-circle'}
           label={'Add entry'}
           description={'From a QR code screenshot, a link or its secret key'}
@@ -384,13 +410,26 @@ export const TouchDashboard: Component<TouchDashboardProps> = (props) => {
         </div>
       </Sheet>
 
+      <QrScanner
+        open={scanOpen()}
+        title={'Scan a QR code'}
+        hint={'Point the camera at the account’s QR code.'}
+        accept={(text) => text.toLowerCase().startsWith('otpauth://')}
+        wrongCode={'That QR code is not a two-factor account.'}
+        onScan={(uri) => void addScanned(uri)}
+        onClose={() => setScanOpen(false)}
+      />
       <AddEntryModal
         open={addOpen()}
         onClose={() => setAddOpen(false)}
         onSuccess={(id) => void showNew([id])}
       />
 
-      <SettingsPage open={settingsOpen()} onClose={() => setSettingsOpen(false)} />
+      <SettingsPage
+        open={settingsOpen()}
+        onClose={() => setSettingsOpen(false)}
+        onSynced={() => void list.refresh()}
+      />
 
       <DeleteEntry
         entry={deleteTarget()}

@@ -1,0 +1,22 @@
+[package]
+name = "ble-linux"
+description = "Arsu as a Bluetooth LE peripheral on Linux, through BlueZ: moves sync chunks, decides nothing"
+version = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+vault-sync = { workspace = true }
+
+bluer = { workspace = true }
+futures-util = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["macros", "time"] }
+uuid = { workspace = true }
+
+[target.'cfg(target_os = "linux")'.dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+
+[lints]
+workspace = true

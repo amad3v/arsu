@@ -25,7 +25,7 @@ use super::{
 };
 use crate::{
   biometric::{KeySealer, SealError, Sealed, UnsealFor},
-  dto::{SecretQrSvg, SecretString},
+  dto::{SecretString, SecretText},
   error::AppError,
 };
 
@@ -148,7 +148,7 @@ impl AppState {
     &self,
     id: Uuid,
     sealer: &impl KeySealer,
-  ) -> Result<SecretQrSvg, AppError> {
+  ) -> Result<SecretText, AppError> {
     {
       let mut session = self.session();
       session.record_activity();

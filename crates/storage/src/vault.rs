@@ -541,7 +541,6 @@ mod tests {
       notes: None,
       created_at: 0,
       updated_at: 0,
-      deleted_at: None,
     }
   }
 
@@ -685,8 +684,9 @@ mod tests {
     let storage = storage(&path);
 
     let vault = storage.open(PASSWORD).unwrap();
-    assert_eq!(labels(&vault), ["alice@example.com", "bob", "carol"]);
-    assert_eq!(vault.payload.active_entries().count(), 2);
+    // The fixture's third entry was deleted: it reads as a tombstone.
+    assert_eq!(labels(&vault), ["alice@example.com", "bob"]);
+    assert_eq!(vault.payload.tombstones.len(), 1);
     match &vault.payload.entries[1].otp {
       OtpConfig::Hotp {
         secret,

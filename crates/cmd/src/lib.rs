@@ -14,15 +14,19 @@ pub mod about;
 pub mod android;
 pub mod auto_lock;
 pub mod biometric;
+pub mod bluetooth;
 pub mod clipboard;
 pub mod clock;
 pub mod commands;
 pub mod device;
+pub mod diagnostics;
 pub mod dto;
 pub mod error;
 pub mod file_dialog;
 pub mod files;
 pub mod password;
+#[cfg(target_os = "linux")]
+pub mod pinch_zoom;
 mod state;
 
 pub use state::{AppState, app_paths};

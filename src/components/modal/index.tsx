@@ -1,8 +1,8 @@
 import { Dialog } from '@ark-ui/solid/dialog';
 import { Show } from 'solid-js';
-import { Portal } from 'solid-js/web';
 
 import { createBackDismiss } from '@cpt/back-dismiss';
+import { DialogPortal } from '@cpt/modal/dialog-portal';
 import { scrollFade } from '@cpt/scroll-fade';
 import { SheetModal } from '@cpt/sheet';
 import { isTouchUi } from '@cpt/touch-ui';
@@ -49,7 +49,7 @@ const CentredOrPage: ParentComponent<ModalProps> = (props) => {
       lazyMount
       unmountOnExit
     >
-      <Portal>
+      <DialogPortal>
         <Dialog.Backdrop class={'modal-backdrop bg-black/60 inset-0 fixed z-40'} />
 
         <Dialog.Positioner
@@ -108,7 +108,7 @@ const CentredOrPage: ParentComponent<ModalProps> = (props) => {
             </div>
           </Dialog.Content>
         </Dialog.Positioner>
-      </Portal>
+      </DialogPortal>
     </Dialog.Root>
   );
 };

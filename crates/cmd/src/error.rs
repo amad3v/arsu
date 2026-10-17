@@ -20,8 +20,15 @@ use otp::OtpError;
 use qr::QrError;
 use storage::{InvalidSetting, StorageError};
 use vault_core::VaultCoreError;
+use vault_sync::{
+  devices::DeviceSetError, file::FileError, gatt::LinkError, identity::IdentityError,
+  invitation::InvitationError, protocol::ProtocolError, session::SessionError,
+};
 
-use crate::{biometric::SealError, clipboard::ClipboardError, password::MIN_PASSWORD_CHARS};
+use crate::{
+  biometric::SealError, clipboard::ClipboardError, diagnostics::Severity,
+  password::MIN_PASSWORD_CHARS,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
@@ -58,6 +65,12 @@ pub enum AppError {
   Clipboard(#[source] ClipboardError),
   #[error("no file is waiting to be imported; choose the file again")]
   NoPendingImport,
+  #[error("there is no diagnostic log on this device")]
+  NoDiagnosticLog,
+  #[error("no diagnostic report is waiting to be saved; prepare it again")]
+  NoDiagnosticReport,
+  #[error("could not put the diagnostic report together")]
+  DiagnosticReport(#[from] zip::result::ZipError),
   #[error("{0} is not a regular file")]
   NotAFile(PathBuf),
   #[error("could not read {path}")]
@@ -96,6 +109,73 @@ pub enum AppError {
   SystemClock(#[source] SystemTimeError),
   #[error("a background task failed")]
   BackgroundTask(#[source] tauri::Error),
+  /// This device's sync identity is not set up, or cannot be listed in
+  /// the device set.
+  #[error(transparent)]
+  Identity(#[from] IdentityError),
+  /// No key could be generated for this device's sync identity.
+  #[error("could not generate a device key")]
+  KeyGeneration(#[from] snow::Error),
+  /// A sync invitation could not be opened or read.
+  #[error(transparent)]
+  Invitation(#[from] InvitationError),
+  /// A sync or join file could not be written or read.
+  #[error(transparent)]
+  SyncFile(#[from] FileError),
+  /// The device set refused a change.
+  #[error(transparent)]
+  Devices(#[from] DeviceSetError),
+  #[error("'{0}' is not a valid device id")]
+  InvalidDeviceId(String),
+  #[error("this device is not paired with your vault")]
+  UntrustedDevice,
+  #[error(
+    "this device is not paired with any other yet: pair them first, with \
+     \u{201c}Pair a new device\u{201d} on one and \u{201c}Join with an invitation\u{201d} on the other"
+  )]
+  NothingPaired,
+  #[error("the vault does not sync with this device")]
+  UnknownDevice,
+  /// A live sync or pairing session failed.
+  #[error(transparent)]
+  Link(#[from] LinkError),
+  #[error("the other device disconnected before the sync finished")]
+  Disconnected,
+  /// The Bluetooth adapter or daemon failed.
+  #[cfg(target_os = "linux")]
+  #[error(transparent)]
+  Bluetooth(ble_linux::BleError),
+  /// The Bluetooth plugin failed. Its own message is for the diagnostic
+  /// log, not for people: they get what to do about it.
+  #[cfg(target_os = "android")]
+  #[error("Bluetooth did not work: keep both devices close together and try again")]
+  Blec(tauri_plugin_blec::Error),
+  /// The Bluetooth peripheral failed. Its own message is for the
+  /// diagnostic log, as with [`Self::Blec`].
+  #[cfg(target_os = "android")]
+  #[error("Bluetooth did not work: keep both devices close together and try again")]
+  Peripheral(ble_android::Error),
+  #[error("Bluetooth is off: turn it on and try again")]
+  BluetoothOff,
+  #[error(
+    "this phone cannot wait for other devices over Bluetooth: let the other device wait \
+     instead, or use a sync file"
+  )]
+  CannotWait,
+  #[error("Bluetooth sync is not available on this device yet")]
+  BluetoothUnsupported,
+  #[error(
+    "Arsu may not use Bluetooth: allow Nearby devices (Location before Android 12) in the \
+     system settings"
+  )]
+  BluetoothPermissionDenied,
+  #[error(
+    "the device showing this invitation was not found nearby: keep its invitation open and \
+     the two devices close together, or read its QR code and save a join file instead"
+  )]
+  InvitingDeviceNotFound,
+  #[error("this device cannot remove itself: remove it from another device")]
+  CannotRemoveThisDevice,
 }
 
 /// What went wrong, as the frontend branches on it. Serialized as the
@@ -149,6 +229,9 @@ pub enum AppErrorKind {
   Clipboard,
   // Import and export files.
   NoPendingImport,
+  NoDiagnosticLog,
+  NoDiagnosticReport,
+  DiagnosticReport,
   NotAFile,
   FileRead,
   FileWrite,
@@ -177,6 +260,149 @@ pub enum AppErrorKind {
   // The runtime.
   SystemClock,
   BackgroundTask,
+  // Sync.
+  TooManyDevices,
+  DeviceRemoved,
+  InvalidDeviceId,
+  UntrustedDevice,
+  NothingPaired,
+  UnknownDevice,
+  CannotRemoveThisDevice,
+  SyncNotSetUp,
+  NotAnInvitation,
+  UnsupportedInvitationVersion,
+  MistypedInvitationCode,
+  NotASyncFile,
+  UnsupportedSyncFileVersion,
+  UnsupportedSyncProtocol,
+  SyncFileForAnotherDevice,
+  NoMatchingInvitation,
+  OwnSyncFile,
+  DamagedSyncFile,
+  SyncHandshakeFailed,
+  UnexpectedDevice,
+  SameDevice,
+  SyncProtocolError,
+  BluetoothTransfer,
+  BluetoothDisconnected,
+  BluetoothUnavailable,
+  BluetoothCannotWait,
+  BluetoothUnsupported,
+  BluetoothPermissionDenied,
+  InvitingDeviceNotFound,
+}
+
+impl AppErrorKind {
+  /// How bad a failure of this kind is, for the diagnostic log; `None` for an expected outcome, such
+  /// as a wrong password or a mistyped field, which is not logged.
+  #[must_use]
+  pub const fn severity(self) -> Option<Severity> {
+    use Severity::{Critical, Error, Warning};
+    match self {
+      // What the user typed or chose: the interface already says so.
+      Self::Locked
+      | Self::VaultNotFound
+      | Self::VaultAlreadyExists
+      | Self::WrongPassword
+      | Self::WeakPassword
+      | Self::InvalidAutoLockMinutes
+      | Self::InvalidClipboardClearSeconds
+      | Self::EntryNotFound
+      | Self::InvalidEntryId
+      | Self::NotOtpauth
+      | Self::MissingLabel
+      | Self::LabelContainsColon
+      | Self::InvalidLabelEncoding
+      | Self::MissingSecret
+      | Self::InvalidSecret
+      | Self::MissingCounter
+      | Self::InvalidNumber
+      | Self::UnknownOtpType
+      | Self::UnknownAlgorithm
+      | Self::InvalidDigits
+      | Self::InvalidPeriod
+      | Self::EmptySecret
+      | Self::InvalidCode
+      | Self::NoPendingImport
+      | Self::NoDiagnosticLog
+      | Self::NoDiagnosticReport
+      | Self::PasswordRequired
+      | Self::WrongPasswordOrCorrupted
+      | Self::BiometricCancelled
+      | Self::BiometricNotEnabled
+      | Self::InvalidDeviceId
+      | Self::NothingPaired
+      | Self::CannotRemoveThisDevice
+      | Self::NotAnInvitation
+      | Self::MistypedInvitationCode
+      | Self::NotASyncFile => None,
+      // Outside Arsu: the device, its settings, another app's file,
+      // another device.
+      Self::VaultInUse
+      | Self::InvalidSettingsFile
+      | Self::CounterExhausted
+      | Self::NotAFile
+      | Self::InvalidFilePath
+      | Self::OpenLink
+      | Self::UnsupportedFileType
+      | Self::FileTooLarge
+      | Self::UnrecognizedFormat
+      | Self::UnsupportedFileVersion
+      | Self::UnsupportedCredential
+      | Self::TooManySlots
+      | Self::UnsupportedFileKdfParams
+      | Self::MalformedFile
+      | Self::BiometricLockout
+      | Self::BiometricInvalidated
+      | Self::BiometricUnavailable
+      | Self::TooManyDevices
+      | Self::DeviceRemoved
+      | Self::UntrustedDevice
+      | Self::UnknownDevice
+      | Self::SyncNotSetUp
+      | Self::UnsupportedInvitationVersion
+      | Self::UnsupportedSyncFileVersion
+      | Self::UnsupportedSyncProtocol
+      | Self::SyncFileForAnotherDevice
+      | Self::NoMatchingInvitation
+      | Self::OwnSyncFile
+      | Self::UnexpectedDevice
+      | Self::SameDevice
+      | Self::BluetoothDisconnected
+      | Self::BluetoothUnavailable
+      | Self::BluetoothCannotWait
+      | Self::BluetoothUnsupported
+      | Self::BluetoothPermissionDenied
+      | Self::InvitingDeviceNotFound => Some(Warning),
+      // Arsu failed at what it was asked.
+      Self::UnsupportedVaultVersion
+      | Self::UnsupportedKdfParams
+      | Self::KeyDerivation
+      | Self::StorageIo
+      | Self::QrEncode
+      | Self::Clipboard
+      | Self::FileRead
+      | Self::FileWrite
+      | Self::FileDialog
+      | Self::DiagnosticReport
+      | Self::ExportSerialize
+      | Self::BiometricFailed
+      | Self::SystemClock
+      | Self::DamagedSyncFile
+      | Self::SyncHandshakeFailed
+      | Self::SyncProtocolError
+      | Self::BluetoothTransfer => Some(Error),
+      // The app or the vault at risk.
+      Self::NotAVault
+      | Self::VaultTruncated
+      | Self::VaultEncode
+      | Self::VaultDecode
+      | Self::Encryption
+      | Self::Randomness
+      | Self::NoProjectDirs
+      | Self::BackgroundTask => Some(Critical),
+    }
+  }
 }
 
 impl AppError {
@@ -202,6 +428,9 @@ impl AppError {
       Self::InvalidCode => AppErrorKind::InvalidCode,
       Self::Clipboard(_) => AppErrorKind::Clipboard,
       Self::NoPendingImport => AppErrorKind::NoPendingImport,
+      Self::NoDiagnosticLog => AppErrorKind::NoDiagnosticLog,
+      Self::NoDiagnosticReport => AppErrorKind::NoDiagnosticReport,
+      Self::DiagnosticReport(_) => AppErrorKind::DiagnosticReport,
       Self::NotAFile(_) => AppErrorKind::NotAFile,
       Self::FileRead { .. } => AppErrorKind::FileRead,
       Self::FileWrite { .. } => AppErrorKind::FileWrite,
@@ -219,6 +448,30 @@ impl AppError {
       Self::BiometricNotEnabled => AppErrorKind::BiometricNotEnabled,
       Self::SystemClock(_) => AppErrorKind::SystemClock,
       Self::BackgroundTask(_) => AppErrorKind::BackgroundTask,
+      Self::Identity(IdentityError::NoIdentity) => AppErrorKind::SyncNotSetUp,
+      Self::Identity(IdentityError::Devices(error)) | Self::Devices(error) => devices_kind(*error),
+      Self::KeyGeneration(_) => AppErrorKind::Randomness,
+      Self::Invitation(error) => invitation_kind(*error),
+      Self::SyncFile(error) => sync_file_kind(error),
+      Self::InvalidDeviceId(_) => AppErrorKind::InvalidDeviceId,
+      Self::UntrustedDevice => AppErrorKind::UntrustedDevice,
+      Self::NothingPaired => AppErrorKind::NothingPaired,
+      Self::UnknownDevice => AppErrorKind::UnknownDevice,
+      Self::Link(LinkError::Gatt(_)) => AppErrorKind::BluetoothTransfer,
+      Self::Link(LinkError::Session(error)) => session_kind(error),
+      Self::Disconnected => AppErrorKind::BluetoothDisconnected,
+      #[cfg(target_os = "linux")]
+      Self::Bluetooth(_) => AppErrorKind::BluetoothUnavailable,
+      #[cfg(target_os = "android")]
+      Self::Blec(_) => AppErrorKind::BluetoothUnavailable,
+      #[cfg(target_os = "android")]
+      Self::Peripheral(_) => AppErrorKind::BluetoothUnavailable,
+      Self::BluetoothOff => AppErrorKind::BluetoothUnavailable,
+      Self::CannotWait => AppErrorKind::BluetoothCannotWait,
+      Self::BluetoothUnsupported => AppErrorKind::BluetoothUnsupported,
+      Self::BluetoothPermissionDenied => AppErrorKind::BluetoothPermissionDenied,
+      Self::InvitingDeviceNotFound => AppErrorKind::InvitingDeviceNotFound,
+      Self::CannotRemoveThisDevice => AppErrorKind::CannotRemoveThisDevice,
     }
   }
 
@@ -226,6 +479,19 @@ impl AppError {
   #[must_use]
   pub fn message(&self) -> String {
     describe(self)
+  }
+
+  /// The cause a plain message leaves out for people, for the diagnostic
+  /// log: a Bluetooth plugin's own error.
+  #[must_use]
+  pub fn hidden_cause(&self) -> Option<String> {
+    match self {
+      #[cfg(target_os = "android")]
+      Self::Blec(error) => Some(format!("{error:?}")),
+      #[cfg(target_os = "android")]
+      Self::Peripheral(error) => Some(format!("{error:?}")),
+      _ => None,
+    }
   }
 }
 
@@ -245,6 +511,59 @@ impl Serialize for AppError {
     payload.serialize_field("kind", &self.kind())?;
     payload.serialize_field("message", &self.message())?;
     payload.end()
+  }
+}
+
+fn invitation_kind(error: InvitationError) -> AppErrorKind {
+  match error {
+    InvitationError::NotAnInvitation => AppErrorKind::NotAnInvitation,
+    InvitationError::UnsupportedVersion => AppErrorKind::UnsupportedInvitationVersion,
+    InvitationError::BadChecksum => AppErrorKind::MistypedInvitationCode,
+    InvitationError::NoIdentity => AppErrorKind::SyncNotSetUp,
+    InvitationError::Random => AppErrorKind::Randomness,
+  }
+}
+
+fn sync_file_kind(error: &FileError) -> AppErrorKind {
+  match error {
+    FileError::NotASyncFile => AppErrorKind::NotASyncFile,
+    FileError::UnsupportedVersion(_) => AppErrorKind::UnsupportedSyncFileVersion,
+    FileError::NotForThisDevice => AppErrorKind::SyncFileForAnotherDevice,
+    FileError::NoInvitation => AppErrorKind::NoMatchingInvitation,
+    FileError::UntrustedSender(_) => AppErrorKind::UntrustedDevice,
+    FileError::OwnFile => AppErrorKind::OwnSyncFile,
+    FileError::Noise(_) => AppErrorKind::Encryption,
+    FileError::Protocol(ProtocolError::UnsupportedProtocol(_)) => {
+      AppErrorKind::UnsupportedSyncProtocol
+    }
+    FileError::Damaged
+    | FileError::Wire(_)
+    | FileError::Protocol(ProtocolError::Cbor(_) | ProtocolError::TooManyTombstones) => {
+      AppErrorKind::DamagedSyncFile
+    }
+  }
+}
+
+fn session_kind(error: &SessionError) -> AppErrorKind {
+  match error {
+    SessionError::Noise(_) => AppErrorKind::SyncHandshakeFailed,
+    SessionError::UntrustedPeer(_) => AppErrorKind::UntrustedDevice,
+    SessionError::UnexpectedPeer(_) => AppErrorKind::UnexpectedDevice,
+    SessionError::OwnKey => AppErrorKind::SameDevice,
+    SessionError::Protocol(ProtocolError::UnsupportedProtocol(_)) => {
+      AppErrorKind::UnsupportedSyncProtocol
+    }
+    SessionError::Wire(_)
+    | SessionError::Protocol(ProtocolError::Cbor(_) | ProtocolError::TooManyTombstones)
+    | SessionError::UnexpectedMessage
+    | SessionError::Closed => AppErrorKind::SyncProtocolError,
+  }
+}
+
+fn devices_kind(error: DeviceSetError) -> AppErrorKind {
+  match error {
+    DeviceSetError::TooManyDevices => AppErrorKind::TooManyDevices,
+    DeviceSetError::Removed => AppErrorKind::DeviceRemoved,
   }
 }
 
@@ -420,5 +739,17 @@ mod tests {
     for (kind, name) in kinds {
       assert_eq!(serde_json::to_value(kind).unwrap(), json!(name));
     }
+  }
+
+  #[test]
+  fn device_set_errors_have_kinds_of_their_own() {
+    assert_eq!(
+      AppError::from(IdentityError::Devices(DeviceSetError::TooManyDevices)).kind(),
+      AppErrorKind::TooManyDevices
+    );
+    assert_eq!(
+      AppError::from(IdentityError::Devices(DeviceSetError::Removed)).kind(),
+      AppErrorKind::DeviceRemoved
+    );
   }
 }

@@ -14,7 +14,7 @@
 //!   secret of a manually entered account, and `otpauth://` URIs (which
 //!   carry the secret). The user types or pastes these into the `WebView`,
 //!   so they cannot avoid it.
-//! - outbound, as [`SecretQrSvg`]: the QR code of a single entry, which
+//! - outbound, as [`SecretText`]: the QR code of a single entry, which
 //!   encodes its secret. It is only produced after the master password
 //!   has been re-verified (`AppState::export_entry_qr`).
 //!
@@ -28,7 +28,8 @@ use zeroize::Zeroizing;
 
 use otp::Totp;
 pub use storage::Theme;
-use vault_core::{Entry, OtpConfig};
+use vault_core::{Entry, OtpConfig, PublicKey};
+use vault_sync::invitation::Invitation;
 
 use crate::error::AppError;
 
@@ -71,32 +72,38 @@ impl<'de> Deserialize<'de> for SecretString {
   }
 }
 
-/// A single entry's QR code, as an SVG document: the one response that
-/// carries secret material, because the QR code encodes the entry's
-/// `otpauth://` URI, secret included. Serialized as a plain string;
-/// zeroized when dropped.
-pub struct SecretQrSvg(Zeroizing<String>);
+/// Text sent to the frontend that carries secret material: an entry's QR
+/// code (an SVG document of its `otpauth://` URI, secret included), or a
+/// sync invitation's QR code and text code. Serialized as a plain
+/// string; zeroized when dropped; redacted from `Debug`.
+pub struct SecretText(Zeroizing<String>);
 
-impl From<String> for SecretQrSvg {
-  fn from(svg: String) -> Self {
-    Self(Zeroizing::new(svg))
+impl From<String> for SecretText {
+  fn from(text: String) -> Self {
+    Self(Zeroizing::new(text))
   }
 }
 
-impl SecretQrSvg {
+impl From<Zeroizing<String>> for SecretText {
+  fn from(text: Zeroizing<String>) -> Self {
+    Self(text)
+  }
+}
+
+impl SecretText {
   #[must_use]
   pub fn as_str(&self) -> &str {
     &self.0
   }
 }
 
-impl fmt::Debug for SecretQrSvg {
+impl fmt::Debug for SecretText {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str("SecretQrSvg(<redacted>)")
+    f.write_str("SecretText(<redacted>)")
   }
 }
 
-impl Serialize for SecretQrSvg {
+impl Serialize for SecretText {
   fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(&self.0)
   }
@@ -141,7 +148,7 @@ impl From<&Entry> for EntrySummary {
 }
 
 /// A computed code: the only form an entry's secret takes on its way
-/// to the frontend, besides [`SecretQrSvg`].
+/// to the frontend, besides [`SecretText`].
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CodeResponse {
@@ -173,6 +180,21 @@ impl CodeResponse {
       next_code: None,
     }
   }
+}
+
+/// An error the interface ran into, for the diagnostic log.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiError {
+  /// What kind of error it is, as the `Error` names itself (`TypeError`).
+  #[serde(default)]
+  pub name: Option<String>,
+  /// What went wrong, as the `Error` says it.
+  pub message: String,
+  /// Where, as the `Error`'s stack trace says it.
+  pub stack: Option<String>,
+  /// Whether the interface could not go on (it showed its error screen).
+  pub fatal: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -283,6 +305,91 @@ pub struct ImportSummary {
   pub duplicates: Vec<SkippedEntry>,
 }
 
+/// The sync screen's view of the vault's devices.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncOverview {
+  pub this_device: SyncDevice,
+  /// The other trusted devices, in the order they were added.
+  pub devices: Vec<SyncDevice>,
+}
+
+/// A device of the vault.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncDevice {
+  /// Its public key, in hex: how commands name it.
+  pub id: String,
+  pub name: String,
+  /// The key's first 8 bytes, as four groups of four hex digits, for
+  /// people to compare between screens.
+  pub fingerprint: String,
+  /// When it was added, in Unix seconds.
+  pub added_at: u64,
+}
+
+impl SyncDevice {
+  #[must_use]
+  pub fn new(public_key: &PublicKey, name: &str, added_at: u64) -> Self {
+    Self {
+      id: hex::encode(public_key.0),
+      name: name.to_owned(),
+      fingerprint: public_key.fingerprint(),
+      added_at,
+    }
+  }
+}
+
+/// An invitation to show: as a QR code, and as a code to
+/// type. Both carry the pairing secret.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncInvitation {
+  pub qr_svg: SecretText,
+  pub code: SecretText,
+  /// Unix seconds.
+  pub expires_at: u64,
+}
+
+impl SyncInvitation {
+  /// The invitation as the interface shows it: its QR code rendered as
+  /// SVG, and its text code.
+  ///
+  /// # Errors
+  ///
+  /// [`AppError::Account`] (`QrEncode`) if the QR code cannot be drawn.
+  pub fn new(invitation: &Invitation, expires_at: u64) -> Result<Self, AppError> {
+    Ok(Self {
+      qr_svg: SecretText::from(qr::encode_qr_svg(&invitation.qr_text())?),
+      code: SecretText::from(invitation.code()),
+      expires_at,
+    })
+  }
+}
+
+/// An Arsu device nearby, as a Bluetooth scan found it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NearbyDevice {
+  /// Its Bluetooth address: how commands name it.
+  pub address: String,
+  /// Whether it is waiting for a device to pair (it shows an invitation).
+  pub pairing: bool,
+}
+
+/// What a sync changed here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSummary {
+  /// The other device's name for itself.
+  pub peer_name: String,
+  pub added: usize,
+  pub updated: usize,
+  pub deleted: usize,
+  /// Whether the other device was paired by this sync.
+  pub paired: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SkippedEntry {
@@ -356,6 +463,26 @@ pub enum AppLink {
   Issues,
 }
 
+/// What a diagnostic report holds, shown to the user before they save
+/// it: its `environment.json` whole, and its latest records.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticReportPreview {
+  /// The name the save dialog suggests.
+  pub file_name: String,
+  /// The zip file's size.
+  pub bytes: usize,
+  /// `environment.json`: what the app and the device are, and the state
+  /// the app is in.
+  pub environment: String,
+  /// The records the report's log files hold.
+  pub records: usize,
+  /// The latest records, one JSON object per line, oldest first.
+  pub latest: String,
+  /// How many records `latest` holds.
+  pub latest_records: usize,
+}
+
 /// The settings in effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -413,6 +540,24 @@ impl SettingsUpdate {
 
 #[cfg(test)]
 mod tests {
+  #[test]
+  fn an_invitation_is_shown_as_a_qr_code_and_a_code_that_read_back() {
+    let invitation = vault_sync::invitation::Invitation {
+      secret: vault_sync::noise::PairingSecret::from_bytes([7; 32]),
+      inviter: PublicKey([9; vault_core::PUBLIC_KEY_LEN]),
+    };
+
+    let shown = SyncInvitation::new(&invitation, 1_234).unwrap();
+
+    assert!(shown.qr_svg.as_str().contains("<svg"));
+    assert_eq!(
+      vault_sync::invitation::parse_code(shown.code.as_str()).unwrap(),
+      invitation.secret
+    );
+    assert_eq!(shown.expires_at, 1_234);
+    assert_eq!(format!("{shown:?}").matches("<redacted>").count(), 2);
+  }
+
   use serde_json::{Value, json};
   use storage::{AutoLockMinutes, ClipboardClearSeconds, InvalidSetting};
 
@@ -433,7 +578,6 @@ mod tests {
       notes: None,
       created_at: 0,
       updated_at: 0,
-      deleted_at: None,
     }
   }
 
@@ -541,13 +685,13 @@ mod tests {
     assert!(!debug.contains("JBSWY3DPEHPK3PXP"), "{debug}");
     assert!(debug.contains("<redacted>"), "{debug}");
 
-    let svg = SecretQrSvg::from("<svg>secret</svg>".to_owned());
-    assert_eq!(format!("{svg:?}"), "SecretQrSvg(<redacted>)");
+    let svg = SecretText::from("<svg>secret</svg>".to_owned());
+    assert_eq!(format!("{svg:?}"), "SecretText(<redacted>)");
   }
 
   #[test]
   fn a_qr_svg_goes_out_as_a_plain_string() {
-    let svg = SecretQrSvg::from("<svg/>".to_owned());
+    let svg = SecretText::from("<svg/>".to_owned());
     assert_eq!(wire(&svg), json!("<svg/>"));
   }
 

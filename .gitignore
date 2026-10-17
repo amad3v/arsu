@@ -11,3 +11,6 @@ planning/
 *.jks
 *.keystore
 keystore.properties
+__pycache__/
+# Claude Code agent notes (local tool state)
+.claude/

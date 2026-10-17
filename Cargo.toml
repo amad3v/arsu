@@ -1,12 +1,15 @@
 [workspace]
 resolver = "3"
 members = [
+  "crates/ble-android",
+  "crates/ble-linux",
   "crates/biometric",
   "crates/cmd",
   "crates/crypto",
   "crates/interop",
   "crates/otp",
   "crates/vault-core",
+  "crates/vault-sync",
   "crates/qr",
   "crates/storage",
   "src-tauri",
@@ -19,20 +22,27 @@ version = "1.1.3"
 
 [workspace.dependencies]
 # internal
+ble-linux = { path = "crates/ble-linux" }
 biometric = { path = "crates/biometric" }
+ble-android = { path = "crates/ble-android" }
 cmd = { path = "crates/cmd" }
 crypto = { path = "crates/crypto" }
 interop = { path = "crates/interop" }
 otp = { path = "crates/otp", features = ["serde"] }
 vault-core = { path = "crates/vault-core" }
+vault-sync = { path = "crates/vault-sync" }
 storage = { path = "crates/storage" }
 qr = { path = "crates/qr" }
 
 # external
+android_system_properties = { version = "^0.1.5" }
 aes-gcm = { version = "^0.11.1", default-features = false, features = ["aes", "zeroize"] }
 arboard = { version = "^3.6.1", default-features = false, features = ["wayland-data-control"] }
 argon2 = { version = "^0.6.0", default-features = false, features = ["alloc", "zeroize"] }
 base32 = { version = "^0.5.1" }
+# The official BlueZ bindings; "bluetoothd" is the GATT server and
+# advertising, through the Bluetooth daemon over D-Bus.
+bluer = { version = "^0.17.4", default-features = false, features = ["bluetoothd"] }
 base64 = { version = "^0.23.1" }
 chacha20poly1305 = { version = "^0.11.0", default-features = false, features = [
   "alloc",
@@ -41,11 +51,15 @@ chacha20poly1305 = { version = "^0.11.0", default-features = false, features = [
 ciborium = { version = "^0.2.2" }
 ctutils = { version = "^0.4.2" }
 directories = { version = "^6.0.0" }
+futures-util = { version = "^0.3.31", default-features = false }
 getrandom = { version = "^0.4.3" }
 hex = { version = "^0.4.3" }
+# Structured fields on log records (`key = value; "message"`).
+log = { version = "^0.4.34", features = ["kv", "std"] }
 hmac = { version = "^0.13.0", features = ["zeroize"] }
 pbkdf2 = { version = "^0.13.0", default-features = false, features = ["hmac"] }
 percent-encoding = { version = "^2.3.2" }
+proptest = { version = "^1.11.0" }
 qrcode = { version = "^0.14.1", default-features = false, features = ["svg"] }
 rustix = { version = "^1.1.5" }
 scrypt = { version = "^0.12.0" }
@@ -54,6 +68,14 @@ serde_bytes = { version = "^0.11.19" }
 serde_json = { version = "^1.0.151" }
 sha1 = { version = "^0.11.0" }
 sha2 = { version = "^0.11.0" }
+# Only the suite sync uses (25519_ChaChaPoly_BLAKE2s), all pure Rust.
+# Not "std": in snow 0.10 it turns on the optional `ring` dependency.
+snow = { version = "^0.10.0", default-features = false, features = [
+  "use-blake2",
+  "use-chacha20poly1305",
+  "use-curve25519",
+  "use-getrandom",
+] }
 # At least 2.12: its tao (0.36+) fixes the Wayland title bar of a window
 # that starts hidden, as ours does (tauri.conf.json), whose buttons
 # otherwise ignore clicks until the window is resized; and it lets the
@@ -65,10 +87,20 @@ gtk = { version = "^0.18.2" }
 tauri-plugin-single-instance = { version = "^2.5.2" }
 tauri-plugin = { version = "^2.7.1" }
 tauri-plugin-dialog = { version = "^2.8.1" }
+# The Bluetooth LE central on Android (sync).
+tauri-plugin-blec = { version = "^0.17.0" }
+# The facade the Bluetooth plugin logs through.
+tracing = { version = "^0.1.44", default-features = false }
 jni = { version = "^0.22.4" }
 ndk-context = { version = "^0.1.1" }
 tempfile = { version = "^3.27.0" }
+# The diagnostic log: masking what it must never hold, UTC timestamps.
+regex = { version = "^1.13.1" }
+time = { version = "^0.3.55", features = ["formatting", "macros"] }
+# The diagnostic report's bundle.
+zip = { version = "^2.4.2", default-features = false, features = ["deflate"] }
 thiserror = { version = "^2.0.21" }
+tokio = { version = "^1.53.1", default-features = false, features = ["sync"] }
 uuid = { version = "^1.27.0", features = ["v7", "serde"] }
 zeroize = { version = "^1.9.0" }
 

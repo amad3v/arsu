@@ -80,6 +80,32 @@ export interface BiometricStatus {
 }
 
 /** What the About dialog shows. Paths are for display. */
+/** An error the interface ran into, for the diagnostic log. */
+export interface UiError {
+  /** Its kind, as the `Error` names itself (`TypeError`), or a failed command's kind. */
+  name: string | null;
+  message: string;
+  stack: string | null;
+  /** The interface could not go on: it showed its error screen. */
+  fatal: boolean;
+}
+
+/** What a diagnostic report holds, shown before it is saved. */
+export interface DiagnosticReportPreview {
+  /** The name the save dialog suggests. */
+  fileName: string;
+  /** The zip file's size. */
+  bytes: number;
+  /** Its `environment.json`, whole: the app, the device, and the state the app is in. */
+  environment: string;
+  /** The records its log files hold. */
+  records: number;
+  /** The latest records, one JSON object per line, oldest first. */
+  latest: string;
+  /** How many records `latest` holds. */
+  latestRecords: number;
+}
+
 export interface AboutInfo {
   name: string;
   version: string;
@@ -120,6 +146,57 @@ export interface ImportSummary {
   skipped: SkippedEntry[];
   /** Valid accounts already in the vault, or repeated in the file. */
   duplicates: SkippedEntry[];
+}
+
+/** A device of the vault, as the sync screen lists it. */
+export interface SyncDevice {
+  /** Its public key in hex: how commands name it. */
+  id: string;
+  name: string;
+  /** "AB12 CD34 EF56 7890": for people to compare between screens. */
+  fingerprint: string;
+  /** Unix seconds. */
+  addedAt: number;
+}
+
+export interface SyncOverview {
+  thisDevice: SyncDevice;
+  /** The other trusted devices, in the order they were added. */
+  devices: SyncDevice[];
+}
+
+/** An invitation to show; both forms carry the pairing secret. */
+export interface SyncInvitation {
+  /** The QR code, as an SVG document. */
+  qrSvg: string;
+  /** The same invitation, to type: 11 groups of 5 characters. */
+  code: string;
+  /** Unix seconds; it is also used up by the first pairing. */
+  expiresAt: number;
+}
+
+/** An Arsu device nearby, as a Bluetooth scan found it. */
+export interface NearbyDevice {
+  /** Its Bluetooth address: how commands name it. */
+  address: string;
+  /** Whether it is waiting for a device to pair (it shows an invitation). */
+  pairing: boolean;
+}
+
+/** A live session's outcome, as the sync-session event carries it. */
+export type SyncSessionReport =
+  | { kind: 'finished'; summary: SyncSummary }
+  | { kind: 'failed'; error: { kind: AppErrorKind; message: string } };
+
+/** What a sync changed on this device. */
+export interface SyncSummary {
+  /** The other device's name for itself. */
+  peerName: string;
+  added: number;
+  updated: number;
+  deleted: number;
+  /** Whether the other device was paired by this sync. */
+  paired: boolean;
 }
 
 export interface Settings {
@@ -193,6 +270,9 @@ export type AppErrorKind =
   | 'Clipboard' // the system clipboard could not be written
   // Import and export files
   | 'NoPendingImport' // the token is not the latest picked file (or was imported already)
+  | 'NoDiagnosticLog' // the diagnostic log could not be started on this device
+  | 'NoDiagnosticReport' // saveDiagnosticReport before prepareDiagnosticReport
+  | 'DiagnosticReport' // the report's zip file could not be put together
   | 'NotAFile' // the picked path is not a regular file
   | 'FileRead' // the picked file could not be read
   | 'FileWrite' // the export could not be written where the user chose
@@ -219,4 +299,34 @@ export type AppErrorKind =
   | 'BiometricNotEnabled' // biometric unlock is not turned on
   // The runtime
   | 'SystemClock' // the system clock is set before 1970
-  | 'BackgroundTask'; // a backend task failed unexpectedly
+  | 'BackgroundTask' // a backend task failed unexpectedly
+  // Sync
+  | 'TooManyDevices' // the vault already syncs with as many devices as it can
+  | 'DeviceRemoved' // this device was removed from the vault and must be paired again
+  | 'InvalidDeviceId' // a device id is not a public key in hex
+  | 'UntrustedDevice' // the other device is not paired with this vault
+  | 'NothingPaired' // this device is paired with no other yet
+  | 'UnknownDevice' // the vault does not sync with the device to remove
+  | 'CannotRemoveThisDevice' // a device cannot remove itself
+  | 'SyncNotSetUp' // sync has not been set up on this device
+  | 'NotAnInvitation' // the QR code or text is not an Arsu invitation
+  | 'UnsupportedInvitationVersion' // the invitation was made by a newer Arsu
+  | 'MistypedInvitationCode' // the typed invitation code fails its checksum
+  | 'NotASyncFile' // the file is not an Arsu sync file
+  | 'UnsupportedSyncFileVersion' // the sync file was made by a newer Arsu
+  | 'UnsupportedSyncProtocol' // the other device speaks a newer sync protocol
+  | 'SyncFileForAnotherDevice' // the sync file is encrypted for another device
+  | 'NoMatchingInvitation' // the join file's invitation expired or was used
+  | 'OwnSyncFile' // the sync file was made by this device
+  | 'DamagedSyncFile' // the sync file is damaged or incomplete
+  | 'SyncHandshakeFailed' // the secure connection failed: wrong pairing code, or not an Arsu device
+  | 'UnexpectedDevice' // not the device that showed the invitation
+  | 'SameDevice' // the other device uses this device's own identity
+  | 'SyncProtocolError' // the other device broke the sync protocol
+  | 'BluetoothTransfer' // Bluetooth packets arrived out of order: try again
+  | 'BluetoothDisconnected' // the other device went away before the sync finished
+  | 'BluetoothUnavailable' // no Bluetooth adapter, or the Bluetooth service is not running
+  | 'BluetoothCannotWait' // this phone's Bluetooth cannot advertise, so others cannot find it
+  | 'BluetoothUnsupported' // Bluetooth sync is not available on this device yet
+  | 'BluetoothPermissionDenied' // the user refused Arsu the Bluetooth (or, before Android 12, location) permission
+  | 'InvitingDeviceNotFound'; // no device nearby shows this invitation

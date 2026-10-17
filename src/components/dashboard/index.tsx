@@ -31,6 +31,7 @@ import { ImportDialog } from '@cpt/import-dialog';
 import { scrollFade } from '@cpt/scroll-fade';
 import { SettingsMenu, useSettings } from '@cpt/settings';
 import { secondsLabel } from '@cpt/settings/options';
+import { SyncDialogButton } from '@cpt/sync-dialog';
 import { isTextEntry } from '@cpt/text-entry';
 import { toaster } from '@cpt/toaster';
 
@@ -273,6 +274,7 @@ export const Dashboard: Component<DashboardProps> = (props) => {
           <AddEntryDialog onSuccess={(id) => void showNew([id])} />
           <ImportDialog onImported={(result) => void showNew(result.importedIds)} />
           <ExportVaultDialog />
+          <SyncDialogButton onSynced={() => void list.refresh()} />
           <IconifiedButton
             class={'btn'}
             onClick={() => void lock()}

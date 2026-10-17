@@ -632,7 +632,6 @@ mod tests {
       notes: Some("recovery codes in the safe".to_owned()),
       created_at: 0,
       updated_at: 0,
-      deleted_at: None,
     }
   }
 

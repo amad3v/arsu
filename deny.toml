@@ -14,13 +14,21 @@ targets = ["x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"]
 # via tauri-utils' urlpattern) can only be replaced upstream in Tauri.
 unmaintained = "workspace"
 yanked = "deny"
-ignore = []
+# zip 2's extraction advisories: Arsu only writes archives (the
+# diagnostic report) and never extracts one. The fix is zip 9.
+ignore = [
+  { id = "RUSTSEC-2026-0367", reason = "Arsu never extracts a zip archive" },
+  { id = "RUSTSEC-2026-0368", reason = "Arsu never extracts a zip archive" },
+  { id = "RUSTSEC-2026-0369", reason = "Arsu never extracts a zip archive" },
+]
 
 [licenses]
 # Every dependency must be available under at least one of these licenses.
 allow = [
   "Apache-2.0",
   "Apache-2.0 WITH LLVM-exception",
+  # bluer, the official BlueZ bindings (Bluetooth sync on Linux).
+  "BSD-2-Clause",
   "BSD-3-Clause",
   "MIT",
   "MPL-2.0",

@@ -1,9 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@solidjs/testing-library';
 import { Show } from 'solid-js';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { stubPrefersDark } from '@cpt/testing/color-scheme';
-import { mockCommands } from '@cpt/testing/ipc';
+import { appError, mockCommands } from '@cpt/testing/ipc';
+import { GlobalToaster, toaster } from '@cpt/toaster';
 
 import { TouchDashboard } from '.';
 
@@ -12,6 +13,7 @@ import type { AddEntryModalProps } from '@cpt/add-entry-dialog';
 import type { DeleteEntryProps } from '@cpt/delete-entry';
 import type * as ExportDialogs from '@cpt/export-dialogs';
 import type { ExportEntryQrModalProps, ExportVaultModalProps } from '@cpt/export-dialogs';
+import type { QrScannerProps } from '@cpt/qr-scanner';
 import type { CommandCall } from '@cpt/testing/ipc';
 
 // The dialogs belong to their own components and tests; here they render nothing.
@@ -50,6 +52,19 @@ vi.mock('@cpt/delete-entry', () => ({
   ),
 }));
 vi.mock('@cpt/about-dialog', () => ({ AboutDialog: () => null }));
+// The camera is the scanner's own business: here it reads a code at a tap,
+// and says which codes it would accept.
+const SCANNED = 'otpauth://totp/Example:bob?secret=JBSWY3DPEHPK3PXP&issuer=Example';
+vi.mock('@cpt/qr-scanner', () => ({
+  QrScanner: (props: QrScannerProps) => (
+    <Show when={props.open}>
+      <button type={'button'} onClick={() => props.onScan(SCANNED)}>
+        {`${props.title}: fake scan`}
+      </button>
+      <p>{props.accept('https://example.com') ? 'accepts links' : 'only accounts'}</p>
+    </Show>
+  ),
+}));
 
 const entries: EntrySummary[] = [
   { id: 'gh', issuer: 'GitHub', accountLabel: 'alice', otpType: 'totp', digits: 6, period: 30 },
@@ -78,6 +93,11 @@ afterAll(() => {
   Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
 });
 
+// The toaster's toasts outlive a test's render: each test starts with none.
+afterEach(() => {
+  toaster.remove();
+});
+
 beforeEach(() => {
   onLocked.mockClear();
   stubPrefersDark(false);
@@ -93,6 +113,34 @@ beforeEach(() => {
 });
 
 describe('TouchDashboard', () => {
+  it('opens sync from the settings', async () => {
+    calls = mockCommands(
+      {
+        get_settings: () => ({ theme: 'system', autoLockMinutes: 5, clipboardClearSeconds: 20 }),
+        list_entries: () => entries,
+        get_current_code: (args) =>
+          codes[args !== undefined && 'entryId' in args ? String(args.entryId) : ''],
+        biometric_status: () => ({
+          supported: true,
+          available: false,
+          reason: 'not-enrolled',
+          enabled: false,
+        }),
+        get_sync_overview: () => ({
+          thisDevice: { id: 'aa', name: 'Pixel', fingerprint: 'AAAA', addedAt: 1 },
+          devices: [],
+        }),
+      },
+      { events: true },
+    );
+    await renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Sync with your devices/ }));
+
+    expect(await screen.findByRole('button', { name: 'Pair a new device' })).toBeTruthy();
+  });
+
   it('copies a code with a tap on its row', async () => {
     await renderDashboard();
 
@@ -157,7 +205,12 @@ describe('TouchDashboard', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Add, import or export' }));
     const sheet = await screen.findByRole('dialog', { name: 'Add or move entries' });
-    for (const action of [/^Add entry/, /^Import entries/, /^Export encrypted backup/]) {
+    for (const action of [
+      /^Scan QR code/,
+      /^Add entry/,
+      /^Import entries/,
+      /^Export encrypted backup/,
+    ]) {
       expect(within(sheet).getByRole('button', { name: action })).toBeTruthy();
     }
 
@@ -165,6 +218,46 @@ describe('TouchDashboard', () => {
     const page = await screen.findByRole('dialog', { name: 'Settings' });
     expect(within(page).queryByRole('button', { name: /Import entries/ })).toBeNull();
     expect(within(page).queryByRole('button', { name: /Export/ })).toBeNull();
+  });
+
+  it('scans a QR code with the camera into a new entry', async () => {
+    calls = mockCommands({
+      get_settings: () => ({ theme: 'system', autoLockMinutes: 5, clipboardClearSeconds: 20 }),
+      list_entries: () => entries,
+      get_current_code: () => codes.gh,
+      add_entry_from_uri: () => 'gh',
+    });
+    await renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add, import or export' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add or move entries' });
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Scan QR code/ }));
+
+    expect(await screen.findByText('only accounts')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Scan a QR code: fake scan' }));
+
+    await waitFor(() => expect(called('add_entry_from_uri')).toEqual([{ uri: SCANNED }]));
+  });
+
+  it('says why a scanned account could not be added', async () => {
+    calls = mockCommands({
+      get_settings: () => ({ theme: 'system', autoLockMinutes: 5, clipboardClearSeconds: 20 }),
+      list_entries: () => entries,
+      get_current_code: () => codes.gh,
+      add_entry_from_uri: () => {
+        throw appError('InvalidSecret', 'The secret is not valid base32.');
+      },
+    });
+    // The error is a toast, which the app shell shows.
+    render(() => <GlobalToaster />);
+    await renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add, import or export' }));
+    const sheet = await screen.findByRole('dialog', { name: 'Add or move entries' });
+    fireEvent.click(within(sheet).getByRole('button', { name: /^Scan QR code/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Scan a QR code: fake scan' }));
+
+    expect(await screen.findByText('The secret is not valid base32.')).toBeTruthy();
   });
 
   it('replaces the + sheet with the dialog it opens', async () => {

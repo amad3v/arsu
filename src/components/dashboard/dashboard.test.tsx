@@ -7,7 +7,7 @@ import { mockCommands } from '@cpt/testing/ipc';
 import { Dashboard } from '.';
 
 import type { CodeResponse, EntrySummary } from '@app-types/api';
-import type { CommandCall } from '@cpt/testing/ipc';
+import type { CommandCall, CommandHandler } from '@cpt/testing/ipc';
 
 // The dialogs belong to their own components and tests; here they render nothing.
 vi.mock('@cpt/add-entry-dialog', () => ({ AddEntryDialog: () => null }));
@@ -61,20 +61,51 @@ afterAll(() => {
   Reflect.deleteProperty(Element.prototype, 'scrollIntoView');
 });
 
+const handlers: Partial<Record<string, CommandHandler>> = {
+  get_settings: () => ({ theme: 'system', autoLockMinutes: 5, clipboardClearSeconds: 20 }),
+  list_entries: () => entries,
+  get_current_code: (args) =>
+    codes[args !== undefined && 'entryId' in args ? String(args.entryId) : ''],
+  copy_code: () => null,
+  lock_vault: () => null,
+};
+
 beforeEach(() => {
   onLocked.mockClear();
   stubPrefersDark(false);
-  calls = mockCommands({
-    get_settings: () => ({ theme: 'system', autoLockMinutes: 5, clipboardClearSeconds: 20 }),
-    list_entries: () => entries,
-    get_current_code: (args) =>
-      codes[args !== undefined && 'entryId' in args ? String(args.entryId) : ''],
-    copy_code: () => null,
-    lock_vault: () => null,
-  });
+  calls = mockCommands(handlers);
 });
 
 describe('Dashboard', () => {
+  it('syncs from the header, and shows what a sync brought', async () => {
+    calls = mockCommands(
+      {
+        ...handlers,
+        get_sync_overview: () => ({
+          thisDevice: { id: 'aa', name: 'Computer', fingerprint: 'AAAA', addedAt: 1 },
+          devices: [],
+        }),
+        import_sync_file: () => ({
+          peerName: 'Pixel',
+          added: 1,
+          updated: 0,
+          deleted: 0,
+          paired: false,
+        }),
+      },
+      { events: true },
+    );
+    await renderDashboard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Sync' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Open a sync file' }));
+
+    await screen.findByText('Synced with Pixel: 1 account added.');
+    await waitFor(() =>
+      expect(calls.filter((call) => call.cmd === 'list_entries')).toHaveLength(2),
+    );
+  });
+
   it("heads the list with the app's logo, its name and the entry count, as on Android", async () => {
     await renderDashboard();
 

@@ -49,16 +49,16 @@ pub enum QrError {
   QrEncode(#[source] qrcode::types::QrError),
 }
 
-/// Renders an `otpauth://` URI as a scannable QR code, returned as an
-/// SVG string: the frontend displays SVG natively, so encoding needs no
-/// raster image dependency.
+/// Renders text — an `otpauth://` URI, a sync invitation — as a
+/// scannable QR code, returned as an SVG string: the frontend displays
+/// SVG natively, so encoding needs no raster image dependency.
 ///
 /// # Errors
 ///
-/// Returns [`QrError::QrEncode`] if the URI cannot be encoded as a QR
+/// Returns [`QrError::QrEncode`] if the text cannot be encoded as a QR
 /// code (it is too long).
-pub fn encode_qr_svg(otpauth_uri: &str) -> Result<String, QrError> {
-  let code = QrCode::new(otpauth_uri.as_bytes()).map_err(QrError::QrEncode)?;
+pub fn encode_qr_svg(text: &str) -> Result<String, QrError> {
+  let code = QrCode::new(text.as_bytes()).map_err(QrError::QrEncode)?;
 
   Ok(
     code

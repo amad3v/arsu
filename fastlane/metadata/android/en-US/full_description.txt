@@ -1,9 +1,9 @@
-<p>Arsu keeps your two-factor secrets in a single encrypted file on your phone and shows their codes. It never connects to the network: it has no internet permission, no account, no sync and no telemetry.</p>
+<p>Arsu keeps your two-factor secrets in a single encrypted file on your phone and shows their codes. It never connects to the network: it has no internet permission, no account, no cloud and no telemetry. Your devices sync directly with each other, over Bluetooth or through a file you move yourself.</p>
 
 <ul>
 <li><b>Encrypted vault.</b> Your master password is stretched with Argon2id (256 MiB, 3 passes), and the whole vault is encrypted with XChaCha20-Poly1305. The file is useless without the password.</li>
 <li><b>Crash-safe saves</b> that never leave a half-written vault, plus the last three versions kept next to it, in case of a bad edit.</li>
-<li><b>Add accounts</b> from an otpauth:// link, a picture of a QR code, or by hand.</li>
+<li><b>Add accounts</b> by scanning their QR code with the camera, from an otpauth:// link, a picture of a QR code, or by hand.</li>
 <li><b>TOTP and HOTP</b>, SHA-1/256/512, 6–8 digits, with the next code shown before the current one expires.</li>
 <li><b>Fingerprint and face unlock</b> (strong biometrics), with a key kept in the phone's secure hardware that adding a fingerprint or face destroys.</li>
 <li><b>Locks itself</b> when the screen goes off, and after an idle time you choose.</li>
@@ -11,7 +11,11 @@
 <li><b>Imports</b> Aegis and 2FAS backups, plain or encrypted, skipping accounts you already have. <b>Exports</b> an encrypted Aegis backup, or a single account as a QR code.</li>
 <li><b>No screenshots</b> or screen recording of the app, and no cloud backup of its data.</li>
 <li><b>Light and dark themes</b>, or following the system.</li>
+<li><b>Syncs your devices, offline.</b> Pair a phone or a computer once with a QR code, then sync over Bluetooth, end-to-end encrypted, or with an encrypted sync file. Each device keeps its own master password.</li>
+<li><b>Diagnostic report</b> for bug reports: failures only, with no account, secret or code in it, saved only when you choose.</li>
 </ul>
+
+<p>Permissions, each asked for only when first needed: Nearby devices (or location on Android 8 to 11) for Bluetooth sync, and the camera for scanning QR codes. No network permission.</p>
 
 <p>Requires Android 8.0 or later, with an up-to-date Android System WebView.</p>
 

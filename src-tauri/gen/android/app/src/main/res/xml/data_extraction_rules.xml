@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+. The installation id names this copy of the app, and its
+     sync key with it: a phone set up from this one must not inherit
+     them, or both would be one device to the others. The vault itself
+     may move; the new phone then makes an identity of its own. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="io.github.amad3v.arsu/sync/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="io.github.amad3v.arsu/sync/" />
+    </device-transfer>
+</data-extraction-rules>

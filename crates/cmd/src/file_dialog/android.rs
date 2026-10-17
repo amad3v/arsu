@@ -80,8 +80,8 @@ impl FileDialog {
           })
           .unwrap_or_default();
         picker
-          .set_file_name(file_name)
-          .add_filter(file_name, &extensions)
+          .set_file_name(file_name.as_ref())
+          .add_filter(file_name.as_ref(), &extensions)
           .blocking_save_file()
       }
     };

@@ -1,6 +1,12 @@
 import { createResource, createSignal, For, Show } from 'solid-js';
 
-import { copyAboutDetails, getAboutInfo, openLink } from '@api';
+import {
+  copyAboutDetails,
+  getAboutInfo,
+  openLink,
+  prepareDiagnosticReport,
+  saveDiagnosticReport,
+} from '@api';
 import { errorMessage } from '@api/lib';
 import { APP_NAME } from '@cpt/app-name';
 import { Modal } from '@cpt/modal';
@@ -12,7 +18,9 @@ import { isTouchUi } from '@cpt/touch-ui';
 import licenseText from '../../../LICENSE?raw';
 import appIcon from '../../assets/app-icon.svg';
 
-import type { AppLink } from '@app-types/api';
+import { DiagnosticReportDialog } from './diagnostic-report';
+
+import type { AppLink, DiagnosticReportPreview } from '@app-types/api';
 import type { Component } from 'solid-js';
 
 export interface AboutDialogProps {
@@ -81,6 +89,40 @@ const AboutContent: Component = () => {
         title: "The details couldn't be copied",
         description: errorMessage(err),
       });
+    }
+  }
+
+  const [report, setReport] = createSignal<DiagnosticReportPreview | null>(null);
+  const [savingReport, setSavingReport] = createSignal(false);
+
+  async function prepareReport() {
+    try {
+      setReport(await prepareDiagnosticReport());
+    } catch (err) {
+      toaster.create({
+        type: 'error',
+        title: "The diagnostic report couldn't be prepared",
+        description: errorMessage(err),
+      });
+    }
+  }
+
+  async function saveReport() {
+    setSavingReport(true);
+    try {
+      // Cancelling the save dialog leaves the report open, to save after all.
+      if (await saveDiagnosticReport()) {
+        setReport(null);
+        toaster.create({ type: 'success', title: 'Diagnostic report saved' });
+      }
+    } catch (err) {
+      toaster.create({
+        type: 'error',
+        title: "The diagnostic report couldn't be saved",
+        description: errorMessage(err),
+      });
+    } finally {
+      setSavingReport(false);
     }
   }
 
@@ -195,14 +237,26 @@ const AboutContent: Component = () => {
                     </dl>
                   )}
                 </Show>
-                <button
-                  type={'button'}
-                  class={'btn mt-auto self-start'}
-                  onClick={() => void copyDetails()}
-                >
-                  <i class={'i-ph-copy size-4'} aria-hidden={'true'} />
-                  {'Copy details'}
-                </button>
+                {/*
+                  Right under the details, not at the foot of the panel: the
+                  panels share the tallest one's height (the credits), and
+                  the foot can be out of sight in a short window.
+                */}
+                <div class={'flex flex-wrap gap-2'}>
+                  <button type={'button'} class={'btn'} onClick={() => void copyDetails()}>
+                    <i class={'i-ph-copy size-4'} aria-hidden={'true'} />
+                    {'Copy details'}
+                  </button>
+                  <button type={'button'} class={'btn'} onClick={() => void prepareReport()}>
+                    <i class={'i-ph-file-zip size-4'} aria-hidden={'true'} />
+                    {'Save diagnostic report'}
+                  </button>
+                </div>
+                <p class={'text-xs text-text-muted'}>
+                  {
+                    'The diagnostic report holds what went wrong (warnings, errors and crashes, each with the steps before it) and what this device is, to attach to a bug report. It never holds an account, a secret, a code or a device’s name; you see all of it before saving it, and it stays on this device unless you share it.'
+                  }
+                </p>
               </div>
             ),
           },
@@ -226,6 +280,12 @@ const AboutContent: Component = () => {
             ),
           },
         ]}
+      />
+      <DiagnosticReportDialog
+        preview={report()}
+        saving={savingReport()}
+        onSave={() => void saveReport()}
+        onClose={() => setReport(null)}
       />
     </div>
   );

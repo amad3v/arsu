@@ -1,8 +1,8 @@
 import { Dialog } from '@ark-ui/solid/dialog';
 import { For, Show } from 'solid-js';
-import { Portal } from 'solid-js/web';
 
 import { createBackDismiss } from '@cpt/back-dismiss';
+import { DialogPortal } from '@cpt/modal/dialog-portal';
 import { isTouchUi } from '@cpt/touch-ui';
 
 import './sheet.css';
@@ -49,7 +49,7 @@ export const Sheet: ParentComponent<SheetProps> = (props) => {
       lazyMount
       unmountOnExit
     >
-      <Portal>
+      <DialogPortal>
         <Dialog.Backdrop class={'sheet-backdrop bg-black/50 inset-0 fixed z-40'} />
         <Dialog.Positioner class={'flex items-end inset-0 justify-center fixed z-50'}>
           <Dialog.Content
@@ -78,7 +78,7 @@ export const Sheet: ParentComponent<SheetProps> = (props) => {
             <div class={'overflow-y-auto'}>{props.children}</div>
           </Dialog.Content>
         </Dialog.Positioner>
-      </Portal>
+      </DialogPortal>
     </Dialog.Root>
   );
 };

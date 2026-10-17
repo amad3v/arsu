@@ -3,6 +3,7 @@ import { createSignal, untrack } from 'solid-js';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PasswordField } from '@cpt/password-field';
+import { dialogSettled } from '@cpt/testing/dialog';
 
 import { Modal } from '.';
 
@@ -17,16 +18,6 @@ function renderModal(props: Partial<ModalProps> = {}) {
     </Modal>
   ));
   return { onClose, setOpen };
-}
-
-/**
- * Ark's dialog builds its focus trap inside a `requestAnimationFrame`
- * (@zag-js/focus-trap), so closing it before that frame runs leaves the trap
- * never constructed, and `finalFocusEl` is never consulted.
- */
-async function waitForFocusTrap() {
-  await new Promise((resolve) => requestAnimationFrame(resolve));
-  await new Promise((resolve) => requestAnimationFrame(resolve));
 }
 
 describe('Modal', () => {
@@ -123,7 +114,7 @@ describe('Modal', () => {
 
     const { setOpen } = renderModal({ finalFocusEl: () => trigger });
     await screen.findByRole('dialog');
-    await waitForFocusTrap();
+    await dialogSettled();
 
     setOpen(false);
     await waitFor(() => {
@@ -134,6 +125,31 @@ describe('Modal', () => {
     });
 
     trigger.remove();
+  });
+
+  it('opened from inside an open dialog, is not hidden from assistive technology', async () => {
+    const [inner, setInner] = createSignal(false);
+    render(() => (
+      <Modal title={'Outer'} open onClose={vi.fn()}>
+        <Modal title={'Inner'} open={inner()} onClose={() => setInner(false)}>
+          <p>{'Inner body'}</p>
+        </Modal>
+      </Modal>
+    ));
+    // The outer dialog hides the rest of the page while the inner one is closed.
+    await screen.findByRole('dialog', { name: 'Outer' });
+    await dialogSettled();
+
+    setInner(true);
+
+    expect(await screen.findByRole('dialog', { name: 'Inner' })).toBeTruthy();
+    await dialogSettled();
+    expect(screen.getByRole('dialog', { name: 'Inner' })).toBeTruthy();
+    // Closed again, it leaves nothing behind in the page.
+    setInner(false);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Inner', hidden: true })).toBeNull();
+    });
   });
 
   it('follows its open prop', async () => {

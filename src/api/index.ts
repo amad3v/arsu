@@ -12,14 +12,21 @@ import type {
   AboutInfo,
   AppLink,
   BiometricStatus,
-  DeviceCheck,
   CodeResponse,
+  DeviceCheck,
+  DiagnosticReportPreview,
   EntrySummary,
   ImportSummary,
   ManualEntryInput,
+  NearbyDevice,
   PickedFile,
   Settings,
   SettingsUpdate,
+  SyncInvitation,
+  SyncOverview,
+  SyncSessionReport,
+  SyncSummary,
+  UiError,
 } from '@app-types/api';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 
@@ -176,6 +183,90 @@ export async function pickQrImage(): Promise<Blob | null> {
   return base64 === null ? null : new Blob([base64ToBytes(base64)]);
 }
 
+// ─── Sync ────────────────────────────────────────────────────────────────────
+
+/** This device and the other devices of the vault; sets sync up on first use. */
+export function getSyncOverview(): Promise<SyncOverview> {
+  return invoke<SyncOverview>('get_sync_overview');
+}
+
+/** Removes a device from the vault, for good. It keeps what it already has. */
+export function removeSyncDevice(deviceId: string): Promise<void> {
+  return invoke('remove_sync_device', { deviceId });
+}
+
+/**
+ * Asks where to save, then writes a sync file for a paired device. Resolves
+ * to false if the user cancels the save dialog.
+ */
+export function exportSyncFile(deviceId: string): Promise<boolean> {
+  return invoke<boolean>('export_sync_file', { deviceId });
+}
+
+/**
+ * Asks where to save, then writes a join file for the device whose
+ * invitation QR code reads `invitation`. Resolves to false if the user cancels.
+ */
+export function exportJoinFile(invitation: string): Promise<boolean> {
+  return invoke<boolean>('export_join_file', { invitation });
+}
+
+/**
+ * Opens the native file dialog for a sync or join file, and merges it.
+ * Resolves to null if the user cancels.
+ */
+export function importSyncFile(): Promise<SyncSummary | null> {
+  return invoke<SyncSummary | null>('import_sync_file');
+}
+
+// ─── Live sync over Bluetooth ────────────────────────────────────────────────
+
+/**
+ * Starts serving paired devices over Bluetooth until stopBluetooth; each
+ * sync is reported by the sync-session event (see onSyncSession).
+ */
+export function startBluetoothSync(): Promise<void> {
+  return invoke('start_bluetooth_sync');
+}
+
+/**
+ * Opens an invitation and waits over Bluetooth for the device that reads it;
+ * the pairing is reported by the sync-session event. Resolves to the invitation to show.
+ */
+export function startBluetoothPairing(): Promise<SyncInvitation> {
+  return invoke<SyncInvitation>('start_bluetooth_pairing');
+}
+
+/** Stops Bluetooth sync or pairing; a session in progress merges nothing. */
+export function stopBluetooth(): Promise<void> {
+  return invoke('stop_bluetooth');
+}
+
+/** The Arsu devices nearby, after a short Bluetooth scan. */
+export function findBluetoothDevices(): Promise<NearbyDevice[]> {
+  return invoke<NearbyDevice[]>('find_bluetooth_devices');
+}
+
+/** Syncs with a paired device nearby, by the address findBluetoothDevices gave. */
+export function syncOverBluetooth(address: string): Promise<SyncSummary> {
+  return invoke<SyncSummary>('sync_over_bluetooth', { address });
+}
+
+/** Pairs with the nearby device showing `invitation`: its QR code's text, or the typed code. */
+export function joinOverBluetooth(invitation: string): Promise<SyncSummary> {
+  return invoke<SyncSummary>('join_over_bluetooth', { invitation });
+}
+
+/** The event live sessions report their outcome with: cmd::bluetooth::SYNC_SESSION_EVENT. */
+export const SYNC_SESSION_EVENT = 'sync-session';
+
+/** Calls `handler` with each live session's outcome. Resolves to the function that stops listening. */
+export function onSyncSession(handler: (report: SyncSessionReport) => void): Promise<UnlistenFn> {
+  return listen<SyncSessionReport>(SYNC_SESSION_EVENT, (event) => {
+    handler(event.payload);
+  });
+}
+
 // ─── Settings ────────────────────────────────────────────────────────────────
 
 export function getSettings(): Promise<Settings> {
@@ -196,6 +287,27 @@ export function getAboutInfo(): Promise<AboutInfo> {
 /** Copies the About dialog's details (versions and paths) to the clipboard, for a bug report. */
 export function copyAboutDetails(): Promise<void> {
   return invoke('copy_about_details');
+}
+
+/**
+ * Prepares a diagnostic report of the log as it is now (what went wrong,
+ * never a secret), and returns what it holds, to show before it is saved.
+ */
+export function prepareDiagnosticReport(): Promise<DiagnosticReportPreview> {
+  return invoke<DiagnosticReportPreview>('prepare_diagnostic_report');
+}
+
+/**
+ * Saves the report prepareDiagnosticReport last prepared, as shown, to a
+ * location the user chooses, for a bug report. False if they cancel.
+ */
+export function saveDiagnosticReport(): Promise<boolean> {
+  return invoke<boolean>('save_diagnostic_report');
+}
+
+/** Writes an error the interface ran into to the diagnostic log. */
+export function reportUiError(error: UiError): Promise<void> {
+  return invoke('report_ui_error', { error });
 }
 
 /** Opens one of the project's pages in the user's browser. */

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The app's manifest declares the Bluetooth permissions, all in one
+     place; this library adds none. -->
+<manifest />

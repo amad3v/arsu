@@ -54,12 +54,44 @@ impl Fixture {
     Self { dir, state }
   }
 
+  /// Adds a TOTP account named `label` (all with the same secret).
+  pub fn add_account(&self, label: &str) {
+    self
+      .state
+      .add_entry_from_uri(&secret(&format!(
+        "otpauth://totp/{label}?secret=JBSWY3DPEHPK3PXP"
+      )))
+      .unwrap();
+  }
+
+  /// The accounts' names, sorted.
+  pub fn labels(&self) -> Vec<String> {
+    let mut labels: Vec<String> = self
+      .state
+      .list_entries()
+      .unwrap()
+      .into_iter()
+      .map(|entry| entry.account_label)
+      .collect();
+    labels.sort();
+    labels
+  }
+
+  /// How many other devices this vault syncs with.
+  pub fn other_devices(&self) -> usize {
+    self.state.sync_overview().unwrap().devices.len()
+  }
+
   /// Removes the vault's directory, so that every later save fails.
   pub fn make_vault_unwritable(&self) {
     fs::remove_dir_all(self.paths().vault().parent().unwrap()).unwrap();
   }
 
   fn paths_in(dir: &TempDir) -> AppPaths {
-    AppPaths::in_dirs(&dir.path().join("data"), &dir.path().join("config"))
+    AppPaths::in_dirs(
+      &dir.path().join("data"),
+      &dir.path().join("config"),
+      &dir.path().join("state"),
+    )
   }
 }

@@ -8,21 +8,22 @@
 //! of any kind), and `capabilities/default.json` grants the window
 //! exactly the app's own commands (`permissions/app-commands.toml`) and
 //! event listening — no plugin commands. The file dialogs (GTK's, or
-//! Android's document picker) and the clipboard are driven from Rust,
-//! which the capability system does not gate, so the `WebView` itself
-//! can open neither.
+//! Android's document picker), the clipboard and Android's Bluetooth
+//! are driven from Rust, which the capability system does not gate, so
+//! the `WebView` itself can reach none of them.
 
 #[macro_use]
 mod app_commands;
 
 use std::{error::Error, thread, time::Duration};
 
-use tauri::{AppHandle, Manager, RunEvent};
+use tauri::{AppHandle, Manager, RunEvent, Runtime, plugin::TauriPlugin};
 
 use cmd::{
   AppState, auto_lock,
   clipboard::{self, ClipboardExt},
   commands,
+  diagnostics::{Diagnostics, Environment, Filter},
 };
 
 macro_rules! invoke_handler {
@@ -42,6 +43,8 @@ macro_rules! invoke_handler {
 pub fn run() -> Result<(), Box<dyn Error>> {
   #[cfg(target_os = "linux")]
   harden_process()?;
+  // A crash leaves its cause in the diagnostic log.
+  cmd::diagnostics::log_panics();
 
   let builder = tauri::Builder::default();
   // First, so that a second instance hands over before anything else
@@ -50,6 +53,8 @@ pub fn run() -> Result<(), Box<dyn Error>> {
   let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
     focus_main_window(app);
   }));
+  // The diagnostic log, before anything that could log.
+  let builder = builder.plugin(diagnostic_log());
   // Android's document picker answers through an activity result, which
   // only a plugin receives. Registering it grants the `WebView` nothing:
   // the capability allows none of its commands, and `cmd` drives it.
@@ -59,20 +64,33 @@ pub fn run() -> Result<(), Box<dyn Error>> {
   // `WebView` cannot (it has no commands).
   #[cfg(target_os = "android")]
   let builder = builder.plugin(biometric::init());
+  // Bluetooth LE as the central, for live sync and pairing; `cmd` drives
+  // it, the `WebView` cannot (the capability allows none of its commands).
+  #[cfg(target_os = "android")]
+  let builder = builder.plugin(tauri_plugin_blec::try_init()?);
+  // Bluetooth LE as the peripheral, so that a phone can wait for the
+  // others as a computer does; `cmd` drives it, the `WebView` cannot.
+  #[cfg(target_os = "android")]
+  let builder = builder.plugin(ble_android::init());
 
   let app = builder
     .manage(clipboard::Clipboard::new())
+    .manage(cmd::bluetooth::Bluetooth::default())
     .setup(|app| {
       #[cfg(target_os = "android")]
       let paths = cmd::app_paths(app.handle())?;
       #[cfg(not(target_os = "android"))]
       let paths = cmd::app_paths()?;
       app.manage(AppState::new(&paths));
+      #[cfg(target_os = "linux")]
+      if let Some(window) = app.get_webview_window("main") {
+        cmd::pinch_zoom::forbid_touchpad_zoom(&window)?;
+      }
       auto_lock::spawn(app.handle().clone())?;
       show_main_window_eventually(app.handle().clone());
       Ok(())
     })
-    .invoke_handler(with_app_commands!(invoke_handler))
+    .invoke_handler(command_trail(with_app_commands!(invoke_handler)))
     .build(tauri::generate_context!())?;
 
   app.run(|app_handle, event| {
@@ -87,6 +105,83 @@ pub fn run() -> Result<(), Box<dyn Error>> {
     }
   });
   Ok(())
+}
+
+/// The crates whose routine steps (`info`) a failure in the diagnostic
+/// log carries; every other crate is heard from at warnings and worse
+/// only. `command` is the trail of commands called ([`command_trail`]).
+/// Android's Bluetooth plugin (`blec`) is not one: its steps are its own
+/// internals (listeners, descriptors), and Arsu's say how a connection
+/// went.
+const STEP_TARGETS: [&str; 6] = [
+  "arsu_lib",
+  "cmd",
+  "ble_linux",
+  "ble_android",
+  "vault_sync",
+  COMMAND_TARGET,
+];
+
+/// What the diagnostic log hears. The windowing library warns of every
+/// call Android ignores, at each start: noise, not a failure.
+const DIAGNOSTIC_FILTER: Filter = Filter {
+  steps: &STEP_TARGETS,
+  quiet: &["tao"],
+};
+
+/// The log target of the commands the interface calls.
+const COMMAND_TARGET: &str = "command";
+
+/// Commands that are no step of the user's: the auto-lock's heartbeat,
+/// sent on every input, and each account's code, fetched as it changes.
+const UNREMARKABLE_COMMANDS: [&str; 2] = ["record_activity", "get_current_code"];
+
+/// `handler`, noting each command it is called with (its name, never its
+/// arguments) as a step for the diagnostic log.
+fn command_trail(
+  handler: impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static,
+) -> impl Fn(tauri::ipc::Invoke) -> bool + Send + Sync + 'static {
+  move |invoke| {
+    let command = invoke.message.command();
+    if !UNREMARKABLE_COMMANDS.contains(&command) {
+      log::info!(target: COMMAND_TARGET, name = command; "command called");
+    }
+    handler(invoke)
+  }
+}
+
+/// Starts the diagnostic log (see `cmd::diagnostics`) in the app's log
+/// directory, as a plugin so that it starts before the other plugins,
+/// which may log as they do. Without it the app still runs: a report
+/// then says there is no log.
+fn diagnostic_log<R: Runtime>() -> TauriPlugin<R> {
+  tauri::plugin::Builder::new("diagnostic-log")
+    .setup(|app, _api| {
+      let package = app.package_info();
+      let environment = Environment::detect(
+        &package.name,
+        &package.version.to_string(),
+        env!("ARSU_COMMIT"),
+        cmd::about::webview(),
+      );
+      let started = app
+        .path()
+        .app_log_dir()
+        .map_err(|error| error.to_string())
+        .and_then(|dir| {
+          Diagnostics::start(&dir, environment, DIAGNOSTIC_FILTER)
+            .map_err(|error| cmd::error::describe(&error))
+        });
+      match started {
+        Ok(diagnostics) => {
+          app.manage(diagnostics);
+        }
+        // There is no log to say it in.
+        Err(error) => eprintln!("arsu: no diagnostic log: {error}"),
+      }
+      Ok(())
+    })
+    .build()
 }
 
 /// The entry point on Android, which Tauri's Android activity calls when

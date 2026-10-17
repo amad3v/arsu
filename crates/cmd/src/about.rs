@@ -63,6 +63,16 @@ impl AboutInfo {
   }
 }
 
+/// The engine the interface runs in and its version
+/// (`WebKitGTK 2.46.1`), for the diagnostic log.
+#[must_use]
+pub fn webview() -> String {
+  match tauri::webview_version() {
+    Ok(version) => format!("{WEBVIEW_NAME} {version}"),
+    Err(_) => format!("{WEBVIEW_NAME} (version unknown)"),
+  }
+}
+
 /// Whether the About dialog shows where the app keeps its files.
 const SHOW_PATHS: bool = cfg!(not(target_os = "android"));
 
