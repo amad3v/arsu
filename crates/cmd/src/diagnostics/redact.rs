@@ -21,8 +21,11 @@ static RULES: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
     (r"otpauth(?:-migration)?://\S+", "otpauth://[masked]"),
     // An invitation's QR code text carries the pairing secret.
     (r"ARSU-INVITE:\S+", "ARSU-INVITE:[masked]"),
-    // A typed invitation code: groups of five, dash-separated.
-    (r"\b(?:[0-9A-Z]{5}-){4,}[0-9A-Z]{1,5}\b", "[code]"),
+    // A typed invitation code, as it is read: in any case, its groups of
+    // five apart by dashes, spaces or nothing.
+    (r"(?i)\b(?:[0-9A-Z]{5}-){4,}[0-9A-Z]{1,5}\b", "[code]"),
+    (r"(?i)\b[0-9A-Z]{5}(?:\s[0-9A-Z]{5}){10}\b", "[code]"),
+    (r"(?i)\b[0-9A-Z]{55}\b", "[code]"),
     // A TOTP secret in base32, as account backups hold them.
     (r"\b[A-Z2-7]{16,}=*", "[secret]"),
     // Account names are often email addresses.
@@ -34,6 +37,15 @@ static RULES: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
   .map(|(pattern, mask)| (Regex::new(pattern).expect("a valid pattern"), mask))
   .collect()
 });
+
+/// A base32 secret in lower case, as some people type them. Told from a
+/// word by its digits, and from hexadecimal by letters past `f`.
+static LOWER_SECRET: LazyLock<Regex> =
+  LazyLock::new(|| Regex::new(r"\b[a-z2-7]{16,}=*").expect("a valid pattern"));
+
+fn is_lower_secret(found: &str) -> bool {
+  found.bytes().any(|c| matches!(c, b'2'..=b'7')) && found.bytes().any(|c| matches!(c, b'g'..=b'z'))
+}
 
 /// A Bluetooth address identifies a device for good: only its last two
 /// bytes stay, enough to tell two devices apart in one log.
@@ -82,6 +94,15 @@ fn redact_with<'t>(text: &'t str, home: Option<&Regex>) -> Cow<'t, str> {
     if let Cow::Owned(masked) = pattern.replace_all(&text, *mask) {
       text = Cow::Owned(masked);
     }
+  }
+  if let Cow::Owned(masked) = LOWER_SECRET.replace_all(&text, |found: &Captures<'_>| {
+    if is_lower_secret(&found[0]) {
+      "[secret]".to_owned()
+    } else {
+      found[0].to_owned()
+    }
+  }) {
+    text = Cow::Owned(masked);
   }
   if let Cow::Owned(masked) = ADDRESS.replace_all(&text, |found: &Captures<'_>| {
     format!("**:**:**:**:{}", &found[1])
@@ -143,11 +164,45 @@ mod tests {
   }
 
   #[test]
+  fn invitation_codes_are_masked_however_they_were_typed() {
+    let code = "abcde-fghjk-mnpqr-stvwx-yz012-34567-89abc-defgh-jkmnp-qrstv-wxyz0";
+    for typed in [
+      code.to_owned(),
+      code.replace('-', " "),
+      code.replace('-', ""),
+    ] {
+      assert_eq!(
+        redact(&format!("code {typed} typed")),
+        "code [code] typed",
+        "{typed}"
+      );
+    }
+  }
+
+  #[test]
+  fn ordinary_words_are_no_code() {
+    let line = "could not reach the other device: start again from the sync screen";
+
+    assert_eq!(redact(line), line);
+  }
+
+  #[test]
   fn base32_secrets_are_masked() {
     assert_eq!(
       redact("secret JBSWY3DPEHPK3PXP rejected"),
       "secret [secret] rejected"
     );
+    assert_eq!(
+      redact("secret jbswy3dpehpk3pxp rejected"),
+      "secret [secret] rejected"
+    );
+  }
+
+  #[test]
+  fn long_words_and_hexadecimal_are_no_secret() {
+    let line = "internationalization failed at 3fa2c4b5e6d7a2b3c4d5e6f7a2b3c4d5";
+
+    assert_eq!(redact(line), line);
   }
 
   #[test]
