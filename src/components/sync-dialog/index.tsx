@@ -787,6 +787,10 @@ const JoinConfirmation: Component<{
     if (invitation !== null) setShown(invitation);
   });
   const fromQrCode = () => shown().startsWith(QR_PREFIX);
+  /** Runs `action` once: the first tap closes the dialog, a second does nothing. */
+  const once = (action: (invitation: string) => void) => () => {
+    if (props.invitation !== null) action(props.invitation);
+  };
 
   return (
     <Modal
@@ -799,7 +803,7 @@ const JoinConfirmation: Component<{
       initialFocusEl={() => cancel() ?? null}
     >
       <div class={'flex flex-col gap-3'}>
-        <button type={'button'} class={'btn-primary'} onClick={() => props.onPair(shown())}>
+        <button type={'button'} class={'btn-primary'} onClick={once(props.onPair)}>
           <i class={'i-ph-bluetooth size-4'} aria-hidden={'true'} />
           {'Pair over Bluetooth'}
         </button>
@@ -813,7 +817,7 @@ const JoinConfirmation: Component<{
             </p>
           }
         >
-          <button type={'button'} class={'btn'} onClick={() => props.onSaveJoinFile(shown())}>
+          <button type={'button'} class={'btn'} onClick={once(props.onSaveJoinFile)}>
             <i class={'i-ph-file-arrow-down size-4'} aria-hidden={'true'} />
             {'Save a join file instead'}
           </button>

@@ -330,6 +330,20 @@ describe('pairing', () => {
     expect(onSynced).toHaveBeenCalledOnce();
   });
 
+  it('pairs once when the confirmation is tapped twice as it closes', async () => {
+    const { called } = renderDialog({ join_over_bluetooth: () => ({ ...synced, paired: true }) });
+    fireEvent.click(await screen.findByRole('button', { name: 'Join with an invitation' }));
+    fireEvent.input(screen.getByLabelText('Or type its code'), { target: { value: CODE } });
+    const confirmation = await screen.findByRole('dialog', { name: 'Pair with this device?' });
+    const pair = within(confirmation).getByRole('button', { name: 'Pair over Bluetooth' });
+
+    fireEvent.click(pair);
+    fireEvent.click(pair);
+
+    expect(await screen.findByText('Paired with Pixel: 2 accounts added.')).toBeTruthy();
+    expect(called('join_over_bluetooth')).toHaveLength(1);
+  });
+
   it('waits for the whole code before asking', async () => {
     renderDialog();
     fireEvent.click(await screen.findByRole('button', { name: 'Join with an invitation' }));
