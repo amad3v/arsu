@@ -139,6 +139,10 @@ const SyncPanel: Component<{ onSynced: () => void }> = (props) => {
   /** An invitation read in the join view, waiting for the user to confirm. */
   const [joining, setJoining] = createSignal<string | null>(null);
   let bluetoothRunning = false;
+  /** Counts the views shown: an action that ends after its view was left is stale. */
+  let shown = 0;
+  /** Counts Bluetooth starts: only the latest may stop what it started. */
+  let starts = 0;
 
   /**
    * Runs one action: one at a time, its error shown. Resolves to its
@@ -183,31 +187,53 @@ const SyncPanel: Component<{ onSynced: () => void }> = (props) => {
     }
   }
 
-  function show(next: View) {
+  function leave() {
     stopBluetoothIfRunning();
+    shown += 1;
+  }
+
+  /** Shows `next`; returns its number, to tell whether it is still shown. */
+  function show(next: View): number {
+    leave();
     setStatus(null);
     setError(null);
     setView(next);
+    return shown;
+  }
+
+  /**
+   * Starts Bluetooth for the view numbered `view`. Started after the view
+   * was left, it is stopped at once, unless a later start replaced it.
+   */
+  async function startBluetooth<T>(view: number, start: () => Promise<T>): Promise<T | null> {
+    const mine = ++starts;
+    const started = await attempt(start);
+    if (started === null) return null;
+    if (view !== shown) {
+      if (mine === starts) void stopBluetooth();
+      return null;
+    }
+    bluetoothRunning = true;
+    return started.value;
   }
 
   async function openInvite() {
-    show('invite');
+    const view = show('invite');
     setInvitation(null);
-    const opened = await attempt(startBluetoothPairing);
-    if (opened === null) return;
-    bluetoothRunning = true;
-    setInvitation(opened.value);
+    const opened = await startBluetooth(view, startBluetoothPairing);
+    if (opened !== null) setInvitation(opened);
   }
 
   async function openServe() {
-    show('serve');
-    if ((await attempt(startBluetoothSync)) !== null) bluetoothRunning = true;
+    await startBluetooth(show('serve'), startBluetoothSync);
   }
 
   async function searchNearby() {
-    show('nearby');
+    const view = show('nearby');
     setNearby(null);
     const found = await attempt(findBluetoothDevices);
+    // Left while searching: nothing to show, nor to sync with.
+    if (view !== shown) return;
     // A device showing an invitation is waiting to pair, not to sync.
     const waiting = found === null ? [] : found.value.filter((device) => !device.pairing);
     setNearby(waiting);
@@ -265,7 +291,7 @@ const SyncPanel: Component<{ onSynced: () => void }> = (props) => {
       else setError(current.error.message);
     }),
   );
-  onCleanup(stopBluetoothIfRunning);
+  onCleanup(leave);
 
   return (
     <div class={'flex flex-col gap-4'}>

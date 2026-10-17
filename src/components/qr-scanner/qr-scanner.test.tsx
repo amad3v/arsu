@@ -145,6 +145,37 @@ describe('the QR scanner', () => {
     expect(closeReader).toHaveBeenCalled();
   });
 
+  it('reads no frame once closed while the preview started', async () => {
+    getUserMedia.mockResolvedValue(fakeStream().stream);
+    let playing: () => void = () => undefined;
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockReturnValue(
+      new Promise<void>((resolve) => {
+        playing = resolve;
+      }),
+    );
+    const { read } = readerAnswering();
+    const { close } = renderScanner();
+    await waitFor(() => expect(play).toHaveBeenCalled());
+
+    close();
+    playing();
+    await new Promise((settled) => setTimeout(settled, 300));
+
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('says the camera failed when its preview cannot start, and lets it go', async () => {
+    const { stream, track } = fakeStream();
+    getUserMedia.mockResolvedValue(stream);
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(
+      new DOMException('no autoplay', 'NotAllowedError'),
+    );
+    readerAnswering();
+    renderScanner();
+
+    await waitFor(() => expect(track.stop).toHaveBeenCalled());
+  });
+
   it('lets go of a camera that opens only after it has closed', async () => {
     const { stream, track } = fakeStream();
     let grant: (stream: MediaStream) => void = () => undefined;

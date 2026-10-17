@@ -116,8 +116,21 @@ const Viewfinder: Component<{
     }
     stream = opened;
     preview.srcObject = opened;
-    await preview.play();
-    void scan(preview);
+    void play(preview);
+  }
+
+  /** Starts the preview, then reads it, unless closed meanwhile. */
+  async function play(preview: HTMLVideoElement) {
+    try {
+      await preview.play();
+    } catch (err) {
+      if (!gone) {
+        letGo();
+        setProblem(cameraProblem(err));
+      }
+      return;
+    }
+    if (!gone) void scan(preview);
   }
 
   onMount(() => void start());

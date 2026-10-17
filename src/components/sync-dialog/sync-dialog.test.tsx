@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { scanQrInWorker } from '@cpt/add-entry-dialog/scan-qr';
 import { dialogSettled } from '@cpt/testing/dialog';
-import { appError, mockCommands } from '@cpt/testing/ipc';
+import { appError, deferred, mockCommands } from '@cpt/testing/ipc';
 
 import { SyncDialog } from '.';
 
@@ -202,6 +202,22 @@ describe('syncing', () => {
     expect(onSynced).toHaveBeenCalledOnce();
   });
 
+  it('syncs with nothing found after the search was left', async () => {
+    const found = deferred<unknown>();
+    const { called } = renderDialog({
+      find_bluetooth_devices: () => found.promise,
+      sync_over_bluetooth: () => synced,
+    });
+    fireEvent.click(await ready('Sync with a device nearby'));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Back' }));
+    found.resolve([{ address: 'AA:BB:CC:DD:EE:FF', pairing: false }]);
+    // Long enough for a stale search to go on and sync.
+    await new Promise((settled) => setTimeout(settled, 100));
+
+    expect(called('sync_over_bluetooth')).toHaveLength(0);
+  });
+
   it('lets the user choose between several devices waiting', async () => {
     const { called } = renderDialog({
       find_bluetooth_devices: () => [
@@ -276,6 +292,18 @@ describe('pairing', () => {
     await screen.findByText('ABCDE-FGHJK');
 
     close();
+
+    await waitFor(() => expect(called('stop_bluetooth')).toHaveLength(1));
+  });
+
+  it('stops Bluetooth that started only after the dialog closed', async () => {
+    const opened = deferred<unknown>();
+    const { called, close } = renderDialog({ start_bluetooth_pairing: () => opened.promise });
+    fireEvent.click(await screen.findByRole('button', { name: 'Pair a new device' }));
+    await waitFor(() => expect(called('start_bluetooth_pairing')).toHaveLength(1));
+
+    close();
+    opened.resolve(invitation);
 
     await waitFor(() => expect(called('stop_bluetooth')).toHaveLength(1));
   });
