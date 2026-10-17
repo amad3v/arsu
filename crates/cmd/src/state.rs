@@ -13,11 +13,15 @@
 mod biometric;
 mod device;
 mod entries;
+mod live;
 mod settings;
+mod sync;
 mod transfer;
+#[cfg(test)]
+pub(crate) mod wire;
 
 #[cfg(test)]
-mod fixture;
+pub(crate) mod fixture;
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -26,9 +30,15 @@ use storage::{AppPaths, SettingsStore, StorageError, UnlockedVault, VaultStorage
 use vault_core::VaultPayload;
 
 use crate::{
-  clipboard::CopiedCodes, clock::BootInstant, dto::SecretString, error::AppError, password,
+  clipboard::CopiedCodes,
+  clock::BootInstant,
+  diagnostics::{AppSummary, SettingsSummary, VaultState},
+  dto::SecretString,
+  error::AppError,
+  password,
 };
 
+pub(crate) use live::{ChunkPeer, LiveRole, labels};
 use settings::SettingsState;
 use transfer::PendingImport;
 
@@ -57,8 +67,9 @@ pub fn app_paths() -> Result<AppPaths, AppError> {
 
 /// Where the app keeps its files on Android: in its own private storage,
 /// `/data/user/<user>/io.github.amad3v.arsu`, which only it can read,
-/// as `vault/vault` and `settings/settings.json`. Each file gets a
-/// directory of its own, which the storage crate makes owner-only.
+/// as `vault/vault`, `settings/settings.json` and
+/// `sync/installation-id`. Each file gets a directory of its own, which
+/// the storage crate makes owner-only.
 ///
 /// # Errors
 ///
@@ -75,14 +86,15 @@ pub fn app_paths<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<AppPath
   Ok(AppPaths::in_dirs(
     &root.join(APP_DIRS.0),
     &root.join(APP_DIRS.1),
+    &root.join(APP_DIRS.2),
   ))
 }
 
-/// The directories of the vault and the settings on Android, under the
-/// app's data directory. Part of the on-disk contract there, as the
-/// app's name is on Linux.
+/// The directories of the vault, the settings and the installation id on
+/// Android, under the app's data directory. Part of the on-disk contract
+/// there, as the app's name is on Linux.
 #[cfg(target_os = "android")]
-const APP_DIRS: (&str, &str) = ("vault", "settings");
+const APP_DIRS: (&str, &str, &str) = ("vault", "settings", "sync");
 
 /// Everything the commands share: one instance, managed by Tauri.
 pub struct AppState {
@@ -235,6 +247,37 @@ impl AppState {
   pub fn copied_codes(&self) -> &CopiedCodes {
     &self.copied_codes
   }
+
+  /// Where the app is, for a diagnostic report: whether there is a vault
+  /// and whether it is open, how many devices it trusts, and the
+  /// settings; never what the vault holds. What cannot be told is left
+  /// out.
+  #[must_use]
+  pub fn diagnostic_summary(&self) -> AppSummary {
+    let (vault, trusted_devices) = {
+      let session = self.session();
+      match &session.vault {
+        Some(vault) => (
+          VaultState::Unlocked,
+          Some(vault_sync::devices::trusted(&vault.payload.sync.devices).count()),
+        ),
+        None => (
+          match self.vault_exists() {
+            Ok(true) => VaultState::Locked,
+            Ok(false) => VaultState::Missing,
+            Err(_) => VaultState::Unknown,
+          },
+          None,
+        ),
+      }
+    };
+    AppSummary {
+      vault,
+      trusted_devices,
+      biometric_unlock: self.biometric_enabled().ok(),
+      settings: self.settings().ok().map(SettingsSummary::from),
+    }
+  }
 }
 
 /// The unlocked vault, if any, and when the user last did something.
@@ -301,6 +344,10 @@ mod tests {
     assert!(paths.vault().ends_with("arsu/vault"), "{paths:?}");
     assert!(
       paths.settings().ends_with("arsu/settings.json"),
+      "{paths:?}"
+    );
+    assert!(
+      paths.installation_id().ends_with("arsu/installation-id"),
       "{paths:?}"
     );
   }

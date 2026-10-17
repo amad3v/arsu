@@ -7,8 +7,8 @@ use std::collections::HashSet;
 use serde::{Deserialize, de::DeserializeOwned};
 use serde_json::value::RawValue;
 
-use qr::{OtpKind, ParsedAccount, QrError};
-use vault_core::{Entry, OtpConfig, SecretBytes};
+use qr::{ParsedAccount, QrError};
+use vault_core::{AccountKey, Entry};
 
 /// The result of importing a backup file: the accounts to add, and the
 /// entries that were left out, each with the reason.
@@ -50,51 +50,16 @@ pub enum SkipReason {
 /// The accounts already in the vault, so an import can leave out the
 /// ones it would add a second time.
 ///
-/// Collect it from the vault's live entries:
-/// `payload.active_entries().collect::<KnownAccounts>()`. A deleted
-/// entry is not known, so importing the account again restores it.
+/// Collect it from the vault's entries:
+/// `payload.entries.iter().collect::<KnownAccounts>()`. A deleted entry
+/// is only a tombstone, so it is not known: importing the account again
+/// adds it back, as a new entry.
 #[derive(Debug, Default)]
 pub struct KnownAccounts(HashSet<AccountKey>);
 
 impl<'entry> FromIterator<&'entry Entry> for KnownAccounts {
   fn from_iter<I: IntoIterator<Item = &'entry Entry>>(entries: I) -> Self {
-    Self(entries.into_iter().map(AccountKey::from_entry).collect())
-  }
-}
-
-/// What makes two accounts the same one: issuer and account name (in
-/// any letter case, ignoring surrounding whitespace), OTP scheme and
-/// secret. Two accounts that differ only in secret are different
-/// enrolments and are both kept. `Debug` is safe to derive:
-/// [`SecretBytes`] redacts itself.
-#[derive(Debug, PartialEq, Eq, Hash)]
-struct AccountKey {
-  issuer: String,
-  account_label: String,
-  kind: OtpKind,
-  secret: SecretBytes,
-}
-
-impl AccountKey {
-  fn new(issuer: Option<&str>, account_label: &str, otp: &OtpConfig) -> Self {
-    let (kind, secret) = match otp {
-      OtpConfig::Totp { secret, .. } => (OtpKind::Totp, secret),
-      OtpConfig::Hotp { secret, .. } => (OtpKind::Hotp, secret),
-    };
-    Self {
-      issuer: issuer.unwrap_or_default().trim().to_lowercase(),
-      account_label: account_label.trim().to_lowercase(),
-      kind,
-      secret: secret.clone(),
-    }
-  }
-
-  fn from_entry(entry: &Entry) -> Self {
-    Self::new(entry.issuer.as_deref(), &entry.account_label, &entry.otp)
-  }
-
-  fn from_account(account: &ParsedAccount) -> Self {
-    Self::new(account.issuer(), account.account_label(), account.otp())
+    Self(entries.into_iter().map(AccountKey::from).collect())
   }
 }
 
@@ -187,7 +152,7 @@ impl<'known> Sorter<'known> {
       }
     };
 
-    let key = AccountKey::from_account(&account);
+    let key = AccountKey::new(account.issuer(), account.account_label(), account.otp());
     let duplicate = if self.known.0.contains(&key) {
       Some(SkipReason::AlreadyInVault)
     } else if self.seen.insert(key) {
@@ -223,7 +188,7 @@ mod tests {
     .unwrap()
   }
 
-  fn entry(account: ParsedAccount, deleted_at: Option<u64>) -> Entry {
+  fn entry(account: ParsedAccount) -> Entry {
     let (issuer, account_label, otp) = account.into_parts();
     Entry {
       id: Uuid::now_v7(),
@@ -235,7 +200,6 @@ mod tests {
       notes: None,
       created_at: 0,
       updated_at: 0,
-      deleted_at,
     }
   }
 
@@ -248,7 +212,7 @@ mod tests {
 
   #[test]
   fn place_sorts_new_known_repeated_and_invalid_entries() {
-    let vault: Vec<Entry> = vec![entry(account(Some("GitHub"), "octocat", b"seed-1"), None)];
+    let vault: Vec<Entry> = vec![entry(account(Some("GitHub"), "octocat", b"seed-1"))];
     let known: KnownAccounts = vault.iter().collect();
     let mut sorter = Sorter::new(&known);
 
@@ -296,7 +260,7 @@ mod tests {
       OtpParams::Hotp { counter: 0 },
     )
     .unwrap();
-    let known: KnownAccounts = [entry(totp, None)].iter().collect();
+    let known: KnownAccounts = [entry(totp)].iter().collect();
     let mut sorter = Sorter::new(&known);
 
     sorter.place("hotp".into(), Ok(hotp));
@@ -305,12 +269,13 @@ mod tests {
   }
 
   #[test]
-  fn deleted_entries_are_not_known_when_collected_from_active_entries() {
+  fn deleted_entries_are_not_known() {
     let mut payload = vault_core::VaultPayload::new();
-    payload
-      .entries
-      .push(entry(account(None, "alice", b"seed"), Some(1)));
-    let known: KnownAccounts = payload.active_entries().collect();
+    let deleted = entry(account(None, "alice", b"seed"));
+    let id = deleted.id;
+    payload.entries.push(deleted);
+    payload.delete_entry(id, 1);
+    let known: KnownAccounts = payload.entries.iter().collect();
     let mut sorter = Sorter::new(&known);
 
     sorter.place("alice".into(), Ok(account(None, "alice", b"seed")));

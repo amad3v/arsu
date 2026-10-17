@@ -19,22 +19,25 @@
 use std::{thread, time::Duration};
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use tauri::{AppHandle, Manager, WebviewWindow};
+use tauri::{AppHandle, Manager, State, WebviewWindow};
 
 use crate::{
   about,
   biometric::{self, PlatformSealer},
+  bluetooth::{self, Bluetooth},
   clipboard::{self, ClipboardExt, CopyTicket, OtpCode, SystemClipboard},
   clock::unix_now,
+  diagnostics::{self, Diagnostics},
   dto::{
-    AboutInfo, AppLink, BiometricStatus, CodeResponse, DeviceCheck, EntrySummary, ImportSummary,
-    ManualEntryInput, PickedFile, SecretQrSvg, SecretString, Settings, SettingsUpdate,
+    AboutInfo, AppLink, BiometricStatus, CodeResponse, DeviceCheck, DiagnosticReportPreview,
+    EntrySummary, ImportSummary, ManualEntryInput, NearbyDevice, PickedFile, SecretString,
+    SecretText, Settings, SettingsUpdate, SyncInvitation, SyncOverview, SyncSummary, UiError,
     parse_entry_id,
   },
   error::AppError,
   file_dialog::{FileDialog, FileType, Purpose},
   files::UserFile,
-  state::AppState,
+  state::{AppState, labels},
 };
 
 /// Runs `task` on the blocking thread pool.
@@ -45,7 +48,9 @@ where
 {
   tauri::async_runtime::spawn_blocking(task)
     .await
-    .map_err(AppError::BackgroundTask)?
+    .map_err(AppError::BackgroundTask)
+    .and_then(|outcome| outcome)
+    .inspect_err(|error| diagnostics::record!("command failed", error))
 }
 
 /// Runs `task` with the app state on the blocking thread pool.
@@ -373,7 +378,7 @@ pub async fn export_entry_qr(
   app: AppHandle,
   entry_id: String,
   master_password: SecretString,
-) -> Result<SecretQrSvg, AppError> {
+) -> Result<SecretText, AppError> {
   with_state(app, move |state| {
     state.export_entry_qr(parse_entry_id(&entry_id)?, &master_password)
   })
@@ -392,7 +397,7 @@ pub async fn export_entry_qr(
 pub async fn export_entry_qr_with_biometric(
   app: AppHandle,
   entry_id: String,
-) -> Result<SecretQrSvg, AppError> {
+) -> Result<SecretText, AppError> {
   run_blocking(move || {
     app
       .state::<AppState>()
@@ -495,7 +500,7 @@ pub async fn export_to_aegis_file(
     let dialog = FileDialog {
       title: "Export an encrypted backup",
       purpose: Purpose::Save {
-        file_name: "aegis-export.json",
+        file_name: "aegis-export.json".into(),
       },
       file_types: &[AEGIS_FILE_TYPE],
     };
@@ -582,6 +587,75 @@ pub async fn copy_about_details(app: AppHandle) -> Result<(), AppError> {
   .await
 }
 
+/// The diagnostic report's file type in the save dialog.
+const REPORT_FILE_TYPES: &[FileType] = &[FileType {
+  name: "Zip archive (*.zip)",
+  patterns: &["*.zip"],
+  mime_types: &["application/zip"],
+}];
+
+/// Prepares a diagnostic report (see [`crate::diagnostics`]) of the log
+/// as it is now, and returns what it holds, for the user to see before
+/// saving it ([`save_diagnostic_report`]).
+///
+/// # Errors
+///
+/// `NoDiagnosticLog` (the log could not be started on this device),
+/// `FileRead` or `DiagnosticReport`.
+#[tauri::command]
+pub async fn prepare_diagnostic_report(
+  app: AppHandle,
+) -> Result<DiagnosticReportPreview, AppError> {
+  run_blocking(move || {
+    let diagnostics = app
+      .try_state::<Diagnostics>()
+      .ok_or(AppError::NoDiagnosticLog)?;
+    let summary = app.state::<AppState>().diagnostic_summary();
+    diagnostics.prepare_report(&summary, time::OffsetDateTime::now_utc())
+  })
+  .await
+}
+
+/// Saves the diagnostic report last prepared, exactly as the user saw it,
+/// to a location they choose, for a bug report. Returns `false` if they
+/// cancel.
+///
+/// # Errors
+///
+/// `NoDiagnosticReport`, `FileDialog`, `InvalidFilePath` or `FileWrite`.
+#[tauri::command]
+pub async fn save_diagnostic_report(window: WebviewWindow) -> Result<bool, AppError> {
+  run_blocking(move || {
+    let report = window
+      .try_state::<Diagnostics>()
+      .ok_or(AppError::NoDiagnosticReport)?
+      .prepared_report()?;
+    let dialog = FileDialog {
+      title: "Save the diagnostic report",
+      purpose: Purpose::Save {
+        file_name: report.file_name.clone().into(),
+      },
+      file_types: REPORT_FILE_TYPES,
+    };
+    let Some(file) = dialog.show(&window)? else {
+      return Ok(false);
+    };
+    file.write(&report.bytes)?;
+    Ok(true)
+  })
+  .await
+}
+
+/// Logs an error the interface ran into, to the diagnostic log.
+#[tauri::command]
+#[expect(
+  clippy::needless_pass_by_value,
+  reason = "Tauri hands a command its arguments by value"
+)]
+pub fn report_ui_error(error: UiError) {
+  diagnostics::record_ui_error(&error);
+}
+
 /// Opens one of the project's pages in the user's browser.
 ///
 /// # Errors
@@ -613,6 +687,293 @@ pub async fn open_link(window: WebviewWindow, link: AppLink) -> Result<(), AppEr
 )]
 pub fn show_window(window: WebviewWindow) {
   let _ = window.show();
+}
+
+// ---- sync --------------------------------------------------------------
+
+/// This device and the other devices of the vault, setting sync up on
+/// first use.
+///
+/// # Errors
+///
+/// `Locked`, `StorageIo`, `Randomness`, `TooManyDevices` or
+/// `SystemClock`.
+#[tauri::command]
+pub async fn get_sync_overview(app: AppHandle) -> Result<SyncOverview, AppError> {
+  with_state(app, AppState::sync_overview).await
+}
+
+/// Removes a trusted device from the vault, for good.
+///
+/// # Errors
+///
+/// `InvalidDeviceId`, `UnknownDevice`, `CannotRemoveThisDevice`,
+/// `Locked`, `StorageIo`, `Randomness` or `SystemClock`.
+#[tauri::command]
+pub async fn remove_sync_device(app: AppHandle, device_id: String) -> Result<(), AppError> {
+  with_state(app, move |state| state.remove_sync_device(&device_id)).await
+}
+
+/// What sync files are saved and opened as.
+const SYNC_FILE_TYPES: &[FileType] = &[
+  FileType {
+    name: "Arsu sync file (*.arsu)",
+    patterns: &["*.arsu"],
+    mime_types: &[],
+  },
+  FileType {
+    name: "All files",
+    patterns: &["*"],
+    mime_types: &[],
+  },
+];
+
+/// Writes a sync file for a paired device, to a location the user
+/// chooses. The device is checked before the dialog opens. Returns
+/// `false` if they cancel.
+///
+/// # Errors
+///
+/// `InvalidDeviceId`, `UntrustedDevice`, `Locked`, `StorageIo`,
+/// `Randomness`, `TooManyDevices`, `SystemClock`, `FileDialog`,
+/// `InvalidFilePath`, `FileWrite`, `Encryption` or `DamagedSyncFile`.
+#[tauri::command]
+pub async fn export_sync_file(window: WebviewWindow, device_id: String) -> Result<bool, AppError> {
+  run_blocking(move || {
+    let dialog = FileDialog {
+      title: "Save a sync file",
+      purpose: Purpose::Save {
+        file_name: "arsu-sync.arsu".into(),
+      },
+      file_types: SYNC_FILE_TYPES,
+    };
+    let state = window.state::<AppState>();
+    state.check_sync_recipient(&device_id)?;
+    let Some(file) = dialog.show(&window)? else {
+      return Ok(false);
+    };
+    state.export_sync_file(&device_id, &file)?;
+    Ok(true)
+  })
+  .await
+}
+
+/// Writes a join file for the device that showed an invitation, given
+/// the text of its QR code, to a location the user chooses. The
+/// invitation is checked before the dialog opens. Returns `false` if
+/// they cancel.
+///
+/// # Errors
+///
+/// `NotAnInvitation`, `UnsupportedInvitationVersion`, `DeviceRemoved`,
+/// `Locked`, `StorageIo`, `Randomness`, `TooManyDevices`, `SystemClock`,
+/// `FileDialog`, `InvalidFilePath`, `FileWrite`, `Encryption` or
+/// `DamagedSyncFile`.
+#[tauri::command]
+pub async fn export_join_file(
+  window: WebviewWindow,
+  invitation: SecretString,
+) -> Result<bool, AppError> {
+  run_blocking(move || {
+    let dialog = FileDialog {
+      title: "Save a join file",
+      purpose: Purpose::Save {
+        file_name: "arsu-join.arsu".into(),
+      },
+      file_types: SYNC_FILE_TYPES,
+    };
+    let state = window.state::<AppState>();
+    state.check_join_invitation(&invitation)?;
+    let Some(file) = dialog.show(&window)? else {
+      return Ok(false);
+    };
+    state.export_join_file(&invitation, &file)?;
+    Ok(true)
+  })
+  .await
+}
+
+/// Asks the user for a sync or join file, and merges it into the vault.
+/// Returns `None` if they cancel.
+///
+/// # Errors
+///
+/// `FileDialog`, `InvalidFilePath`, `NotAFile`, `FileRead`,
+/// `FileTooLarge`, `Locked`, `StorageIo`, `Randomness`, `SystemClock`,
+/// `NotASyncFile`, `UnsupportedSyncFileVersion`, `UnsupportedSyncProtocol`,
+/// `SyncFileForAnotherDevice`, `NoMatchingInvitation`, `UntrustedDevice`,
+/// `OwnSyncFile`, `DamagedSyncFile`, `Encryption`, `TooManyDevices` or
+/// `DeviceRemoved`.
+#[tauri::command]
+pub async fn import_sync_file(window: WebviewWindow) -> Result<Option<SyncSummary>, AppError> {
+  run_blocking(move || {
+    let dialog = FileDialog {
+      title: "Open a sync file",
+      purpose: Purpose::Open,
+      file_types: SYNC_FILE_TYPES,
+    };
+    let Some(file) = dialog.show(&window)? else {
+      return Ok(None);
+    };
+    window.state::<AppState>().import_sync_file(&file).map(Some)
+  })
+  .await
+}
+
+// ---- live sync over Bluetooth ------------------------------------------
+
+/// Starts serving paired devices over Bluetooth, one after the other,
+/// reporting each sync as a `sync-session` event, until
+/// [`stop_bluetooth`]. A phone that cannot advertise reports so as the
+/// first session's failure.
+///
+/// # Errors
+///
+/// `Locked`, or `BluetoothUnsupported` where this device has no
+/// Bluetooth support at all. Later failures arrive as events.
+#[tauri::command]
+#[expect(
+  clippy::needless_pass_by_value,
+  reason = "Tauri hands a command its state by value"
+)]
+pub fn start_bluetooth_sync(app: AppHandle, state: State<'_, AppState>) -> Result<(), AppError> {
+  if !state.is_unlocked() {
+    return Err(AppError::Locked);
+  }
+  #[cfg(any(target_os = "linux", target_os = "android"))]
+  {
+    bluetooth::start_sync(&app);
+    Ok(())
+  }
+  #[cfg(not(any(target_os = "linux", target_os = "android")))]
+  {
+    let _ = app;
+    Err(AppError::BluetoothUnsupported)
+  }
+}
+
+/// Opens an invitation from this device (a QR code and a code to type,
+/// valid for 15 minutes and for one pairing) and waits for the device
+/// that reads it to pair over Bluetooth, reporting the outcome as a
+/// `sync-session` event.
+/// Returns the invitation to show: its QR code also serves a join file,
+/// should Bluetooth fail.
+///
+/// # Errors
+///
+/// `Locked`, `StorageIo`, `Randomness`, `TooManyDevices`, `SystemClock`,
+/// `QrEncode`, or `BluetoothUnsupported` where this device has no
+/// Bluetooth support at all.
+#[tauri::command]
+pub async fn start_bluetooth_pairing(app: AppHandle) -> Result<SyncInvitation, AppError> {
+  let (invitation, shown) = with_state(app.clone(), |state| {
+    let (invitation, expires_at) = state.create_invitation()?;
+    let shown = SyncInvitation::new(&invitation, expires_at)?;
+    Ok((invitation, shown))
+  })
+  .await?;
+  #[cfg(any(target_os = "linux", target_os = "android"))]
+  {
+    bluetooth::start_pairing(&app, invitation);
+    Ok(shown)
+  }
+  #[cfg(not(any(target_os = "linux", target_os = "android")))]
+  {
+    let _ = (invitation, shown);
+    Err(AppError::BluetoothUnsupported)
+  }
+}
+
+/// The Arsu devices nearby, found by a short Bluetooth scan.
+///
+/// # Errors
+///
+/// `BluetoothUnavailable`, or `BluetoothUnsupported` where this device
+/// cannot scan yet.
+#[tauri::command]
+pub async fn find_bluetooth_devices() -> Result<Vec<NearbyDevice>, AppError> {
+  #[cfg(any(target_os = "linux", target_os = "android"))]
+  {
+    async { bluetooth::find_devices(&bluetooth::central()?).await }
+      .await
+      .inspect_err(|error| diagnostics::record!("scan failed", error))
+  }
+  #[cfg(not(any(target_os = "linux", target_os = "android")))]
+  {
+    Err(AppError::BluetoothUnsupported)
+  }
+}
+
+/// Syncs with a paired device nearby, by its Bluetooth address.
+///
+/// # Errors
+///
+/// `InvalidDeviceId`, `Locked`, `BluetoothUnavailable`,
+/// `BluetoothUnsupported`, `BluetoothDisconnected`, `BluetoothTransfer`,
+/// `UntrustedDevice`, `SyncHandshakeFailed`, `SyncProtocolError`,
+/// `UnsupportedSyncProtocol`, `TooManyDevices`, `StorageIo` or
+/// `SystemClock`.
+#[tauri::command]
+pub async fn sync_over_bluetooth(app: AppHandle, address: String) -> Result<SyncSummary, AppError> {
+  #[cfg(any(target_os = "linux", target_os = "android"))]
+  {
+    async { bluetooth::sync_with(&app.state::<AppState>(), &bluetooth::central()?, &address).await }
+      .await
+      .inspect_err(|error| {
+        diagnostics::record!("session failed", error, "role" => labels::SYNC_CONNECTING);
+      })
+  }
+  #[cfg(not(any(target_os = "linux", target_os = "android")))]
+  {
+    let _ = (app, address);
+    Err(AppError::BluetoothUnsupported)
+  }
+}
+
+/// Pairs with the device nearby that shows an invitation, given as the
+/// text of its QR code or as the typed code.
+///
+/// # Errors
+///
+/// `NotAnInvitation`, `UnsupportedInvitationVersion`,
+/// `MistypedInvitationCode`, `InvitingDeviceNotFound`, `UnexpectedDevice`,
+/// and as [`sync_over_bluetooth`].
+#[tauri::command]
+pub async fn join_over_bluetooth(
+  app: AppHandle,
+  invitation: SecretString,
+) -> Result<SyncSummary, AppError> {
+  #[cfg(any(target_os = "linux", target_os = "android"))]
+  {
+    async {
+      bluetooth::join(
+        &app.state::<AppState>(),
+        &bluetooth::central()?,
+        invitation.expose(),
+      )
+      .await
+    }
+    .await
+    .inspect_err(|error| {
+      diagnostics::record!("session failed", error, "role" => labels::PAIRING_JOINING);
+    })
+  }
+  #[cfg(not(any(target_os = "linux", target_os = "android")))]
+  {
+    let _ = (app, invitation);
+    Err(AppError::BluetoothUnsupported)
+  }
+}
+
+/// Stops Bluetooth sync or pairing: advertising ends, and a session in
+/// progress is dropped without merging.
+#[tauri::command]
+#[expect(
+  clippy::needless_pass_by_value,
+  reason = "Tauri hands a command its state by value"
+)]
+pub fn stop_bluetooth(running: State<'_, Bluetooth>) {
+  running.stop();
 }
 
 // ---- settings ----------------------------------------------------------

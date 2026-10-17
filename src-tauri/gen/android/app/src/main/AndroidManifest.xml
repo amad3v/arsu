@@ -1,9 +1,45 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <!-- No INTERNET permission: Arsu never connects to the network, and
          Android enforces it. Only debug builds ask for it (see
          src/debug/AndroidManifest.xml), to load the interface from the
-         development server. -->
+         development server. CI fails a release build whose merged
+         manifest asks for any permission outside the list below. -->
+
+    <!-- Bluetooth sync. Android 12+ (API 31+): the "Nearby devices"
+         permissions, to find and join devices (scans are never used to
+         locate the phone) and to wait for them (advertising). -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
+
+    <!-- Android 8-11 (API 26-30): the legacy Bluetooth permissions (which
+         advertising takes too), and location, which scanning needs there.
+         tauri-plugin-blec declares these for every version; the overrides
+         stop them at Android 11. -->
+    <uses-permission android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" tools:replace="android:maxSdkVersion" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" tools:replace="android:maxSdkVersion" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"
+        tools:node="remove" />
+
+    <!-- Bluetooth is optional: phones without it still install Arsu, and
+         sync with files. -->
+    <uses-feature android:name="android.hardware.bluetooth_le"
+        android:required="false" tools:replace="android:required" />
+
+    <!-- Scanning QR codes (an account's, or a sync invitation): asked for
+         the first time the scanner opens, and used only while it is open.
+         The camera is optional: phones without one still install Arsu,
+         and read QR codes from pictures. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <!-- allowBackup="false": the vault stays out of Android's cloud
          backup, which would upload it to the user's Google account. -->

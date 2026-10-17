@@ -19,6 +19,7 @@ tauri-build = { workspace = true }
 
 [dependencies]
 cmd = { workspace = true }
+log = { workspace = true }
 tauri = { workspace = true }
 
 [dev-dependencies]
@@ -33,7 +34,12 @@ tauri-plugin-single-instance = { workspace = true }
 # Android library (Cargo only shows a `links` crate's metadata to its
 # direct dependents).
 biometric = { workspace = true }
+ble-android = { workspace = true }
+tauri-plugin-blec = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
+# The Bluetooth plugin logs through `tracing`, which passes its events on
+# to `log`, and so to the diagnostic log, only with this feature.
+tracing = { workspace = true, features = ["log"] }
 
 [lints]
 workspace = true

@@ -7,15 +7,23 @@
 //! once decrypted," which is deliberately the narrowest possible scope
 //! for the crate that defines the shape everything else has to agree on.
 
+mod account;
+pub mod cbor;
 mod envelope;
 mod payload;
 mod secret;
+mod sync_state;
 
+pub use account::AccountKey;
 pub use envelope::{
   CURRENT_FORMAT_VERSION, EnvelopeHeader, HEADER_LEN, LEGACY_FORMAT_VERSION, MAGIC, VaultEnvelope,
 };
-pub use payload::{Entry, OtpConfig, VaultPayload};
+pub use payload::{Entry, OtpConfig, Tombstone, VaultPayload};
 pub use secret::SecretBytes;
+pub use sync_state::{
+  DeviceIdentity, DeviceSet, Member, PUBLIC_KEY_LEN, PendingInvitation, PublicKey, Removal,
+  SyncState,
+};
 
 use crypto::KdfParamsError;
 

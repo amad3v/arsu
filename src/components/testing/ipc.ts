@@ -17,16 +17,23 @@ export interface CommandCall {
 /**
  * Routes every invoke() to its handler and records the call. A command with
  * no handler rejects, so an unexpected call fails the test instead of passing
- * silently.
+ * silently. With `events`, the backend's events can be faked with `emit()`
+ * from `@tauri-apps/api/event`.
  */
-export function mockCommands(handlers: Partial<Record<string, CommandHandler>>): CommandCall[] {
+export function mockCommands(
+  handlers: Partial<Record<string, CommandHandler>>,
+  { events = false }: { events?: boolean } = {},
+): CommandCall[] {
   const calls: CommandCall[] = [];
-  mockIPC((cmd, args) => {
-    calls.push({ cmd, args });
-    const handler = handlers[cmd];
-    if (handler === undefined) throw new Error(`unexpected command: ${cmd}`);
-    return handler(args);
-  });
+  mockIPC(
+    (cmd, args) => {
+      calls.push({ cmd, args });
+      const handler = handlers[cmd];
+      if (handler === undefined) throw new Error(`unexpected command: ${cmd}`);
+      return handler(args);
+    },
+    { shouldMockEvents: events },
+  );
   return calls;
 }
 

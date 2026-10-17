@@ -1,6 +1,8 @@
 // The QR worker. Reading a QR code from a large screenshot takes jsQR long
-// enough to freeze the window, so it runs here instead. It receives the image
-// as a Blob and replies with one QrScan. Loaded by ./scan-qr.ts as a bundled
+// enough to freeze the window, so it runs here instead. It receives an image
+// as a Blob, or a camera frame as an ImageBitmap (transferred), and replies
+// to each with one QrScan, in order. Loaded by ./scan-qr.ts for one image
+// and by the QR scanner's frame reader for a stream of frames, as a bundled
 // module file, which the CSP's `script-src 'self'` allows (a blob: URL would
 // not be).
 
@@ -14,7 +16,7 @@ addEventListener('message', (event: MessageEvent) => {
     postMessage(scan);
   };
 
-  if (image instanceof Blob) {
+  if (image instanceof Blob || image instanceof ImageBitmap) {
     void scanQrImage(image).then(reply);
   } else {
     reply({ status: 'unreadable' });

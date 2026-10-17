@@ -8,6 +8,7 @@ import { createBackDismiss } from '@cpt/back-dismiss';
 import { useSettings } from '@cpt/settings';
 import { clipboardClearChoices, minutesLabel, secondsLabel } from '@cpt/settings/options';
 import { Sheet, SheetChoices } from '@cpt/sheet';
+import { SyncDialog } from '@cpt/sync-dialog';
 import { themeIcon, themeLabel } from '@cpt/theme-toggle/data';
 import { ThemeSheet } from '@cpt/theme-toggle/theme-sheet';
 
@@ -18,6 +19,8 @@ import type { Component, JSX } from 'solid-js';
 export interface SettingsPageProps {
   open: boolean;
   onClose: () => void;
+  /** Called after a sync or pairing changed the vault. */
+  onSynced: () => void;
 }
 
 /** Which setting's choices are showing in the sheet. */
@@ -34,6 +37,7 @@ export const SettingsPage: Component<SettingsPageProps> = (props) => {
   const [picking, setPicking] = createSignal<Picking>(null);
   const [themeOpen, setThemeOpen] = createSignal(false);
   const [aboutOpen, setAboutOpen] = createSignal(false);
+  const [syncOpen, setSyncOpen] = createSignal(false);
 
   createBackDismiss(
     () => props.open,
@@ -99,6 +103,14 @@ export const SettingsPage: Component<SettingsPageProps> = (props) => {
               />
             </Group>
 
+            <Group title={'Devices'}>
+              <Row
+                icon={'i-ph-arrows-clockwise'}
+                label={'Sync with your devices'}
+                onSelect={() => setSyncOpen(true)}
+              />
+            </Group>
+
             <Group>
               <Row
                 icon={'i-ph-info'}
@@ -139,6 +151,11 @@ export const SettingsPage: Component<SettingsPageProps> = (props) => {
 
       <ThemeSheet open={themeOpen()} onClose={() => setThemeOpen(false)} />
       <AboutDialog open={aboutOpen()} onClose={() => setAboutOpen(false)} />
+      <SyncDialog
+        open={syncOpen()}
+        onClose={() => setSyncOpen(false)}
+        onSynced={() => props.onSynced()}
+      />
     </Show>
   );
 };

@@ -2,7 +2,7 @@
 
 **Offline TOTP/HOTP authenticator with an encrypted local vault**, for the Linux desktop and Android.
 
-Arsu keeps your two-factor secrets in a single encrypted file on your machine and shows their codes. It never connects to the network: no account, no sync, no telemetry.
+Arsu keeps your two-factor secrets in a single encrypted file on your machine and shows their codes. It never connects to the network: no account, no cloud, no telemetry. Your devices sync directly with each other, over Bluetooth or through a file you move yourself.
 
 <!-- Screenshot: add .github/screenshot.png and uncomment.
 ![Arsu's main window](.github/screenshot.png)
@@ -14,13 +14,14 @@ Named after Arsu, the god of the evening star worshipped at Palmyra, who protect
 
 - **Encrypted vault.** Your master password is stretched with Argon2id (256 MiB, 3 passes), and the whole vault is encrypted with XChaCha20-Poly1305. The file is useless without the password.
 - **Crash-safe saves** that never leave a half-written vault, plus the last three versions kept next to it, in case of a bad edit.
-- **Add accounts** from an `otpauth://` link, a screenshot of a QR code (paste it, drop it, or pick the file), or by hand.
+- **Add accounts** by scanning their QR code with the camera (Android), from an `otpauth://` link, a screenshot of a QR code (paste it, drop it, or pick the file), or by hand.
 - **TOTP and HOTP**, SHA-1/256/512, 6–8 digits, with the next code shown before the current one expires.
 - **Quick to use from the keyboard:** type to search, arrows to choose, Enter to copy. Or double-click a row.
 - **Locks itself** after an idle time you choose (5 minutes by default, counting time the computer sleeps).
 - **Clears copied codes** from the clipboard after a delay you choose (20 seconds by default), unless you copied something else meanwhile, and asks clipboard managers not to keep them in their history. On Android, codes are marked sensitive, so the clipboard preview and keyboards don't show them.
 - **Imports** Aegis and 2FAS backups, plain or encrypted, skipping accounts you already have. **Exports** an encrypted Aegis backup, or a single account as a QR code (after asking for your master password again).
 - **Light and dark themes**, or following the system.
+- **Syncs your devices with each other, offline.** Pair a device once, by QR code or a typed code, then sync over Bluetooth, between any two of your phones and computers, or with an encrypted sync file. Each device keeps its own master password; nothing is ever sent over a network.
 
 ## Install
 
@@ -77,7 +78,7 @@ On Android, both live in the app's private storage, `/data/user/0/io.github.amad
 
 What Arsu protects against:
 
-- **A stolen laptop, disk or backup of your files.** The vault resists offline password guessing for as long as your master password's strength allows. Choose a long one.
+- **A stolen computer, disk or backup of your files.** The vault resists offline password guessing for as long as your master password's strength allows. Choose a long one.
 - **The interface itself.** The secrets never leave the Rust side of the app: the interface only ever receives codes. It loads nothing from the network (a strict Content Security Policy), and can call only the app's own commands.
 - **Leftovers.** Copied codes are cleared from the clipboard, and the app writes no core dumps that could hold the unlocked vault.
 
@@ -85,6 +86,10 @@ What it can't protect against:
 
 - **Malware running as your user while the vault is unlocked.** Such a program can read your screen, your clipboard and your keystrokes. Lock the vault when you're not using it; it also locks itself when you're idle.
 - **Screen capture.** Linux offers no reliable way for an app to block it. (Android does: there, Arsu's window can't be captured in screenshots, recordings or the recent apps list.)
+
+### Diagnostic report
+
+When something goes wrong, a diagnostic report tells why, on any device. Arsu logs warnings, errors and crashes as [JSON Lines](https://jsonlines.org), each with its time (UTC), where it happened, the error's kind and causes, and the steps that led to it; routine activity is not written. **About → Save diagnostic report** shows you everything the report holds, then saves it as one zip file (the log, and what the app and the device are: versions, operating system, phone model) wherever you choose, to attach to an issue. It never holds an account, a secret, a code, an invitation, a password or a device's name; home directories and Bluetooth addresses are masked as each line is written, and it never leaves your device on its own. The log lives in the app's log directory (`~/.local/share/io.github.amad3v.arsu/logs/` on Linux, the app's private storage on Android), five files of 1 MB at most.
 
 ### Reporting a vulnerability
 
@@ -97,6 +102,7 @@ Requirements:
 - Rust, at the version pinned in `rust-toolchain.toml`: run `rustup toolchain install` in the project folder
 - Node.js and pnpm
 - The [Tauri prerequisites for Linux](https://v2.tauri.app/start/prerequisites/#linux), notably WebKitGTK 4.1
+- The D-Bus headers, for Bluetooth sync through BlueZ (`libdbus-1-dev` on Debian and Ubuntu, `dbus-devel` on Fedora)
 
 ```sh
 pnpm install
@@ -118,7 +124,7 @@ pnpm tauri android build   # APKs and AABs under src-tauri/gen/android/app/build
 
 Release builds have to be signed: see [Tauri's guide to Android signing](https://v2.tauri.app/distribute/sign/android/).
 
-The Android project is in `src-tauri/gen/android`. Its manifest asks for no network permission outside debug builds (which load the interface from the development server), and `MainActivity.kt` blocks screen capture and keeps the interface clear of the system bars.
+The Android project is in `src-tauri/gen/android`. Its manifest asks for no network permission outside debug builds (which load the interface from the development server); for Bluetooth sync it asks for Nearby devices (Android 12 and later: to find other devices and to wait for them) or Bluetooth and location (Android 8 to 11, where scanning needs it), and for the camera to scan QR codes, each only when first needed; CI fails a release build that asks for anything else. `MainActivity.kt` blocks screen capture and keeps the interface clear of the system bars.
 
 Checks, as CI runs them:
 

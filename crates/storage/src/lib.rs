@@ -6,12 +6,14 @@
 
 mod error;
 mod fs_util;
+mod installation;
 mod paths;
 mod settings;
 mod vault;
 
 pub use error::StorageError;
 pub use fs_util::atomic_write;
+pub use installation::installation_id;
 pub use paths::AppPaths;
 pub use settings::{
   AutoLockMinutes, ClipboardClearSeconds, InvalidSetting, Settings, SettingsStore, Theme,

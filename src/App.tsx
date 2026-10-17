@@ -6,8 +6,11 @@ import {
   detectVaultScreen,
   needsRootConsent,
   onBackendLock,
+  reportUiCrash,
+  reportUncaughtErrors,
   startFailure,
   suppressPageContextMenu,
+  suppressPinchZoom,
 } from '@cpt/app-shell';
 import { CreateVaultScreen, RootWarningScreen, UnlockScreen } from '@cpt/auth-screens';
 import { Dashboard } from '@cpt/dashboard';
@@ -55,6 +58,8 @@ const App: Component = () => {
     const stopReporting = reportUserActivity();
     onCleanup(stopReporting);
     onCleanup(suppressPageContextMenu());
+    onCleanup(suppressPinchZoom());
+    onCleanup(reportUncaughtErrors());
   });
 
   // Only an unlocked vault can lock itself, so this always leaves the dashboard.
@@ -63,17 +68,7 @@ const App: Component = () => {
   return (
     <>
       <main class={'text-text bg-bg-app h-full'}>
-        <ErrorBoundary
-          fallback={(err, reset) => (
-            <Centered>
-              <ErrorPanel
-                title={'Something went wrong'}
-                message={errorMessage(err)}
-                onRetry={reset}
-              />
-            </Centered>
-          )}
-        >
+        <ErrorBoundary fallback={(err: unknown, reset) => <Crashed error={err} onRetry={reset} />}>
           <Switch>
             <Match when={failure()}>
               {(current) => (
@@ -110,6 +105,20 @@ const App: Component = () => {
       </main>
       <GlobalToaster />
     </>
+  );
+};
+
+/** What the interface shows when it cannot go on, after reporting why. */
+const Crashed: Component<{ error: unknown; onRetry: () => void }> = (props) => {
+  onMount(() => reportUiCrash(props.error));
+  return (
+    <Centered>
+      <ErrorPanel
+        title={'Something went wrong'}
+        message={errorMessage(props.error)}
+        onRetry={() => props.onRetry()}
+      />
+    </Centered>
   );
 };
 

@@ -22,6 +22,8 @@ mod backend;
 #[cfg(target_os = "android")]
 pub use backend::Document;
 
+use std::borrow::Cow;
+
 /// A file the user chose in a dialog, to read or write: a path on Linux,
 /// a picked document on Android. Either way, [`crate::files::UserFile`]
 /// reads and writes it.
@@ -42,18 +44,18 @@ pub struct FileType {
 }
 
 /// What the dialog is for.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Purpose {
   Open,
   /// Choose where to save, starting from `file_name`; replacing an
   /// existing file is confirmed.
   Save {
-    file_name: &'static str,
+    file_name: Cow<'static, str>,
   },
 }
 
 /// A file dialog to show.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct FileDialog {
   pub title: &'static str,
   pub purpose: Purpose,

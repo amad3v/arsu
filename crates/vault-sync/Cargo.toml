@@ -1,0 +1,25 @@
+[package]
+name = "vault-sync"
+description = "Arsu's offline vault sync: merge, device trust, protocol and Noise sessions, without I/O"
+version = { workspace = true }
+edition = { workspace = true }
+publish = { workspace = true }
+
+[dependencies]
+vault-core = { workspace = true }
+
+base32 = { workspace = true }
+getrandom = { workspace = true }
+serde = { workspace = true }
+sha2 = { workspace = true }
+snow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+zeroize = { workspace = true }
+
+[dev-dependencies]
+otp = { workspace = true }
+proptest = { workspace = true }
+
+[lints]
+workspace = true

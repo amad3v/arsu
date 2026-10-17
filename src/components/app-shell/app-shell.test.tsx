@@ -8,8 +8,12 @@ import { appError, mockCommands } from '@cpt/testing/ipc';
 import {
   detectVaultScreen,
   onBackendLock,
+  reportUiCrash,
+  reportUncaughtErrors,
   startFailure,
   suppressPageContextMenu,
+  suppressPinchZoom,
+  uiError,
   vaultScreen,
 } from '.';
 
@@ -84,5 +88,91 @@ describe('suppressPageContextMenu', () => {
     stop();
     expect(fireEvent.contextMenu(document.body)).toBe(true);
     field.remove();
+  });
+});
+
+describe('suppressPinchZoom', () => {
+  const touches = (count: number) => ({
+    touches: Array.from({ length: count }, (_, identifier) => ({
+      identifier,
+      target: document.body,
+    })),
+  });
+
+  it('takes a two-finger touch from the engine, never a one-finger one, until turned back on', () => {
+    const stop = suppressPinchZoom();
+
+    // One finger scrolls and taps as ever.
+    expect(fireEvent.touchStart(document.body, touches(1))).toBe(true);
+    expect(fireEvent.touchMove(document.body, touches(1))).toBe(true);
+    // Two are a pinch, which the page keeps for itself (and does nothing with).
+    expect(fireEvent.touchStart(document.body, touches(2))).toBe(false);
+    expect(fireEvent.touchMove(document.body, touches(2))).toBe(false);
+
+    stop();
+    expect(fireEvent.touchMove(document.body, touches(2))).toBe(true);
+  });
+});
+
+describe('uiError', () => {
+  it('names an Error and keeps where it happened', () => {
+    const error = new TypeError('x is undefined');
+
+    expect(uiError(error, false)).toEqual({
+      name: 'TypeError',
+      message: 'x is undefined',
+      stack: error.stack,
+      fatal: false,
+    });
+  });
+
+  it('says what a failed command reported, named by its kind', () => {
+    expect(uiError(appError('FileWrite', 'could not write ~/a'), true)).toEqual({
+      name: 'FileWrite',
+      message: 'could not write ~/a',
+      stack: null,
+      fatal: true,
+    });
+  });
+
+  it('takes anything else as text', () => {
+    expect(uiError('boom', false)).toEqual({
+      name: null,
+      message: 'boom',
+      stack: null,
+      fatal: false,
+    });
+  });
+});
+
+describe('reporting to the diagnostic log', () => {
+  it('reports uncaught errors and unhandled rejections until stopped', async () => {
+    const calls = mockCommands({ report_ui_error: () => null });
+    const stop = reportUncaughtErrors();
+
+    window.dispatchEvent(new ErrorEvent('error', { error: new Error('broke'), message: 'broke' }));
+    const rejection = new Event('unhandledrejection') as PromiseRejectionEvent;
+    Object.defineProperty(rejection, 'reason', { value: 'nobody caught me' });
+    window.dispatchEvent(rejection);
+    stop();
+    window.dispatchEvent(new ErrorEvent('error', { message: 'after stopping' }));
+
+    await vi.waitFor(() => expect(calls).toHaveLength(2));
+    expect(
+      calls.map((call) => (call.args as { error: { message: string } }).error.message),
+    ).toEqual(['broke', 'nobody caught me']);
+  });
+
+  it('reports a crash as fatal, and stays quiet if the report fails too', async () => {
+    const calls = mockCommands({
+      report_ui_error: () => {
+        throw new Error('the backend is gone');
+      },
+    });
+
+    reportUiCrash(new Error('render failed'));
+
+    await vi.waitFor(() => expect(calls).toHaveLength(1));
+    expect((calls[0].args as { error: { fatal: boolean } }).error.fatal).toBe(true);
   });
 });

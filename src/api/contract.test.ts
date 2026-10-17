@@ -3,9 +3,10 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { VAULT_LOCKED_EVENT } from '@api';
+import { SYNC_SESSION_EVENT, VAULT_LOCKED_EVENT } from '@api';
 
 import autoLockRs from '../../crates/cmd/src/auto_lock.rs?raw';
+import bluetoothRs from '../../crates/cmd/src/bluetooth.rs?raw';
 import errorRs from '../../crates/cmd/src/error.rs?raw';
 import passwordRs from '../../crates/cmd/src/password.rs?raw';
 import settingsRs from '../../crates/storage/src/settings.rs?raw';
@@ -59,6 +60,9 @@ const everyKind: Record<AppErrorKind, true> = {
   InvalidCode: true,
   Clipboard: true,
   NoPendingImport: true,
+  NoDiagnosticLog: true,
+  NoDiagnosticReport: true,
+  DiagnosticReport: true,
   NotAFile: true,
   FileRead: true,
   FileWrite: true,
@@ -84,6 +88,35 @@ const everyKind: Record<AppErrorKind, true> = {
   BiometricNotEnabled: true,
   SystemClock: true,
   BackgroundTask: true,
+  TooManyDevices: true,
+  DeviceRemoved: true,
+  InvalidDeviceId: true,
+  UntrustedDevice: true,
+  NothingPaired: true,
+  UnknownDevice: true,
+  CannotRemoveThisDevice: true,
+  SyncNotSetUp: true,
+  NotAnInvitation: true,
+  UnsupportedInvitationVersion: true,
+  MistypedInvitationCode: true,
+  NotASyncFile: true,
+  UnsupportedSyncFileVersion: true,
+  UnsupportedSyncProtocol: true,
+  SyncFileForAnotherDevice: true,
+  NoMatchingInvitation: true,
+  OwnSyncFile: true,
+  DamagedSyncFile: true,
+  SyncHandshakeFailed: true,
+  UnexpectedDevice: true,
+  SameDevice: true,
+  SyncProtocolError: true,
+  BluetoothTransfer: true,
+  BluetoothDisconnected: true,
+  BluetoothUnavailable: true,
+  BluetoothCannotWait: true,
+  BluetoothUnsupported: true,
+  BluetoothPermissionDenied: true,
+  InvitingDeviceNotFound: true,
 };
 
 describe('the TypeScript contract matches the Rust source', () => {
@@ -91,6 +124,12 @@ describe('the TypeScript contract matches the Rust source', () => {
     const variants = rustListItems(rustBlock(errorRs, 'pub enum AppErrorKind'));
 
     expect(Object.keys(everyKind).sort()).toEqual(variants.sort());
+  });
+
+  it('the sync session event is cmd::bluetooth::SYNC_SESSION_EVENT', () => {
+    const rust = rustCapture(bluetoothRs, /pub const SYNC_SESSION_EVENT: &str = "([^"]+)";/);
+
+    expect(SYNC_SESSION_EVENT).toBe(rust);
   });
 
   it('the auto-lock event is cmd::auto_lock::VAULT_LOCKED_EVENT', () => {

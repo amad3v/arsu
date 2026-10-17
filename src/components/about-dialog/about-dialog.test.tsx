@@ -1,13 +1,15 @@
 import { fireEvent, render, screen, waitFor, within } from '@solidjs/testing-library';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { SettingsMenu } from '@cpt/settings';
 import { stubPrefersDark } from '@cpt/testing/color-scheme';
-import { mockCommands } from '@cpt/testing/ipc';
+import { dialogSettled } from '@cpt/testing/dialog';
+import { appError, mockCommands } from '@cpt/testing/ipc';
+import { GlobalToaster, toaster } from '@cpt/toaster';
 
 import appIcon from '../../assets/app-icon.svg';
 
-import type { AboutInfo, Settings } from '@app-types/api';
+import type { AboutInfo, DiagnosticReportPreview, Settings } from '@app-types/api';
 import type { CommandCall } from '@cpt/testing/ipc';
 
 const settings: Settings = { theme: 'system', autoLockMinutes: 10, clipboardClearSeconds: 10 };
@@ -22,6 +24,15 @@ const about: AboutInfo = {
   settingsPath: '/home/u/.config/arsu/settings.json',
 };
 
+const report: DiagnosticReportPreview = {
+  fileName: 'arsu-diagnostics-20261011-140322.zip',
+  bytes: 12_345,
+  environment: '{\n  "format": "arsu-diagnostic-report/1"\n}',
+  records: 3,
+  latest: '{"type":"env"}\n{"level":"warning","msg":"session failed"}\n{"seq":3}',
+  latestRecords: 3,
+};
+
 let calls: CommandCall[];
 
 beforeEach(() => {
@@ -31,7 +42,14 @@ beforeEach(() => {
     get_about_info: () => about,
     open_link: () => null,
     copy_about_details: () => null,
+    prepare_diagnostic_report: () => report,
+    save_diagnostic_report: () => true,
   });
+});
+
+// The toaster's toasts outlive a test's render: each test starts with none.
+afterEach(() => {
+  toaster.remove();
 });
 
 /**
@@ -94,6 +112,103 @@ describe('AboutDialog', () => {
     await waitFor(() => {
       expect(commands('open_link')).toEqual([{ link: 'website' }, { link: 'issues' }]);
     });
+  });
+
+  /** Opens the About dialog, and from it the diagnostic report. */
+  async function openReport(): Promise<HTMLElement> {
+    const about = await openAbout();
+    await dialogSettled();
+    fireEvent.click(within(about).getByRole('button', { name: 'Save diagnostic report' }));
+    return screen.findByRole('dialog', { name: 'Diagnostic report' });
+  }
+
+  it('shows the diagnostic report whole before saving it', async () => {
+    render(() => <GlobalToaster />);
+    const preview = await openReport();
+
+    expect(
+      within(preview).getByText('arsu-diagnostics-20261011-140322.zip · 12.3 kB · 3 records'),
+    ).toBeTruthy();
+    expect(within(preview).getByText(/"format": "arsu-diagnostic-report\/1"/)).toBeTruthy();
+    expect(within(preview).getByText(/"msg":"session failed"/)).toBeTruthy();
+    expect(within(preview).getByRole('heading', { name: 'The log' })).toBeTruthy();
+    expect(commands('save_diagnostic_report')).toHaveLength(0);
+
+    fireEvent.click(within(preview).getByRole('button', { name: 'Save report' }));
+
+    expect(await screen.findByText('Diagnostic report saved')).toBeTruthy();
+    expect(commands('save_diagnostic_report')).toHaveLength(1);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Diagnostic report' })).toBeNull();
+    });
+  });
+
+  it('says how much of a long log it shows', async () => {
+    mockCommands({
+      get_settings: () => settings,
+      get_about_info: () => about,
+      prepare_diagnostic_report: () => ({ ...report, records: 1200, latestRecords: 500 }),
+    });
+    const preview = await openReport();
+
+    expect(
+      within(preview).getByRole('heading', { name: 'The log: its latest 500 records' }),
+    ).toBeTruthy();
+  });
+
+  it('says when the log is empty', async () => {
+    mockCommands({
+      get_settings: () => settings,
+      get_about_info: () => about,
+      prepare_diagnostic_report: () => ({ ...report, records: 0, latest: '', latestRecords: 0 }),
+    });
+    const preview = await openReport();
+
+    expect(within(preview).getByText(/Nothing has gone wrong on this device yet/)).toBeTruthy();
+  });
+
+  it('keeps the report open when the save is cancelled, and saves nothing when it is', async () => {
+    calls = mockCommands({
+      get_settings: () => settings,
+      get_about_info: () => about,
+      prepare_diagnostic_report: () => report,
+      save_diagnostic_report: () => false,
+    });
+    render(() => <GlobalToaster />);
+    const preview = await openReport();
+
+    fireEvent.click(within(preview).getByRole('button', { name: 'Save report' }));
+    await waitFor(() => expect(commands('save_diagnostic_report')).toHaveLength(1));
+    expect(screen.queryByText('Diagnostic report saved')).toBeNull();
+    expect(screen.getByRole('dialog', { name: 'Diagnostic report' })).toBeTruthy();
+
+    const cancel = within(preview).getByRole<HTMLButtonElement>('button', { name: 'Cancel' });
+    // The buttons wait while the save dialog is open.
+    await waitFor(() => expect(cancel.disabled).toBe(false));
+    fireEvent.click(cancel);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Diagnostic report' })).toBeNull();
+    });
+    expect(commands('save_diagnostic_report')).toHaveLength(1);
+    expect(screen.getByRole('dialog', { name: 'About Arsu' })).toBeTruthy();
+  });
+
+  it('says why the report could not be prepared', async () => {
+    mockCommands({
+      get_settings: () => settings,
+      get_about_info: () => about,
+      prepare_diagnostic_report: () => {
+        throw appError('NoDiagnosticLog', 'there is no diagnostic log on this device');
+      },
+    });
+    render(() => <GlobalToaster />);
+    const dialog = await openAbout();
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save diagnostic report' }));
+
+    expect(await screen.findByText('there is no diagnostic log on this device')).toBeTruthy();
+    expect(screen.queryByRole('dialog', { name: 'Diagnostic report' })).toBeNull();
   });
 
   it('copies the details, and gives focus back to the menu button as it closes', async () => {

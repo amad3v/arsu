@@ -12,29 +12,42 @@ otp = { workspace = true }
 qr = { workspace = true }
 storage = { workspace = true }
 vault-core = { workspace = true }
+vault-sync = { workspace = true }
 
-rustix = { workspace = true, features = ["fs", "time"] }
+rustix = { workspace = true, features = ["fs", "system", "time"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+tokio = { workspace = true, features = ["macros", "time"] }
+snow = { workspace = true }
 tauri = { workspace = true }
 base64 = { workspace = true }
+hex = { workspace = true }
+log = { workspace = true }
+regex = { workspace = true }
 thiserror = { workspace = true }
+time = { workspace = true }
 uuid = { workspace = true }
+zip = { workspace = true }
 zeroize = { workspace = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 arboard = { workspace = true }
+ble-linux = { workspace = true }
 gtk = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
+android_system_properties = { workspace = true }
 biometric = { workspace = true }
+ble-android = { workspace = true }
 jni = { workspace = true }
 ndk-context = { workspace = true }
+tauri-plugin-blec = { workspace = true }
 tauri-plugin-dialog = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt", "test-util"] }
 
 [lints]
 workspace = true

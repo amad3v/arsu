@@ -61,7 +61,7 @@ impl FileDialog {
     );
     chooser.set_modal(true);
     chooser.set_local_only(true);
-    if let Purpose::Save { file_name } = self.purpose {
+    if let Purpose::Save { file_name } = &self.purpose {
       chooser.set_do_overwrite_confirmation(true);
       chooser.set_current_name(file_name);
     }

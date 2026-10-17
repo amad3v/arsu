@@ -96,9 +96,58 @@ const wrappers: [string, () => Promise<unknown>, string, InvokeArgs | undefined]
     { password: 'pw' },
   ],
   ['pickQrImage', () => api.pickQrImage(), 'pick_qr_image', undefined],
+  ['getSyncOverview', () => api.getSyncOverview(), 'get_sync_overview', undefined],
+  [
+    'removeSyncDevice',
+    () => api.removeSyncDevice('ab12'),
+    'remove_sync_device',
+    { deviceId: 'ab12' },
+  ],
+  ['exportSyncFile', () => api.exportSyncFile('ab12'), 'export_sync_file', { deviceId: 'ab12' }],
+  [
+    'exportJoinFile',
+    () => api.exportJoinFile('ARSU-INVITE:X'),
+    'export_join_file',
+    { invitation: 'ARSU-INVITE:X' },
+  ],
+  ['importSyncFile', () => api.importSyncFile(), 'import_sync_file', undefined],
+  ['startBluetoothSync', () => api.startBluetoothSync(), 'start_bluetooth_sync', undefined],
+  [
+    'startBluetoothPairing',
+    () => api.startBluetoothPairing(),
+    'start_bluetooth_pairing',
+    undefined,
+  ],
+  ['stopBluetooth', () => api.stopBluetooth(), 'stop_bluetooth', undefined],
+  ['findBluetoothDevices', () => api.findBluetoothDevices(), 'find_bluetooth_devices', undefined],
+  [
+    'syncOverBluetooth',
+    () => api.syncOverBluetooth('AA:BB:CC:DD:EE:FF'),
+    'sync_over_bluetooth',
+    { address: 'AA:BB:CC:DD:EE:FF' },
+  ],
+  [
+    'joinOverBluetooth',
+    () => api.joinOverBluetooth('ABCDE-FGHJK'),
+    'join_over_bluetooth',
+    { invitation: 'ABCDE-FGHJK' },
+  ],
   ['getSettings', () => api.getSettings(), 'get_settings', undefined],
   ['getAboutInfo', () => api.getAboutInfo(), 'get_about_info', undefined],
   ['copyAboutDetails', () => api.copyAboutDetails(), 'copy_about_details', undefined],
+  [
+    'prepareDiagnosticReport',
+    () => api.prepareDiagnosticReport(),
+    'prepare_diagnostic_report',
+    undefined,
+  ],
+  ['saveDiagnosticReport', () => api.saveDiagnosticReport(), 'save_diagnostic_report', undefined],
+  [
+    'reportUiError',
+    () => api.reportUiError({ name: null, message: 'boom', stack: null, fatal: false }),
+    'report_ui_error',
+    { error: { name: null, message: 'boom', stack: null, fatal: false } },
+  ],
   ['openLink', () => api.openLink('issues'), 'open_link', { link: 'issues' }],
   ['showWindow', () => api.showWindow(), 'show_window', undefined],
   [
@@ -144,6 +193,24 @@ describe('command wrappers', () => {
 
     recordCalls(null);
     await expect(api.pickQrImage()).resolves.toBeNull();
+  });
+});
+
+describe('onSyncSession', () => {
+  it('passes each sync-session report to the handler', async () => {
+    mockIPC(() => null, { shouldMockEvents: true });
+    const handler = vi.fn();
+    const report = {
+      kind: 'failed',
+      error: { kind: 'BluetoothDisconnected', message: 'gone' },
+    };
+
+    const unlisten = await api.onSyncSession(handler);
+    await emit(api.SYNC_SESSION_EVENT, report);
+    unlisten();
+    await emit(api.SYNC_SESSION_EVENT, report);
+
+    expect(handler).toHaveBeenCalledExactlyOnceWith(report);
   });
 });
 

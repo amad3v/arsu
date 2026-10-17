@@ -45,7 +45,6 @@ fn entry(label: &str) -> Entry {
     notes: None,
     created_at: 0,
     updated_at: 0,
-    deleted_at: None,
   }
 }
 

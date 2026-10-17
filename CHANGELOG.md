@@ -3,6 +3,118 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Added
+
+- **Sync between your devices, without any network.** The new Sync
+  screen (the header's Sync button on the desktop; Settings → Sync with
+  your devices on Android) pairs a device once — it shows a QR code and
+  a code to type — and then keeps both vaults the same, over Bluetooth or
+  with an encrypted sync file you move yourself.
+  - Accounts added on one device appear on the others, deletions follow,
+    HOTP counters never go back, and an account added on two devices
+    ends up once. Sessions are end-to-end encrypted (the Noise protocol);
+    each device keeps its own master password.
+  - Any two of your devices sync over Bluetooth: phones only, computers
+    only, or a mix. One chooses **Wait for my devices**, the other **Sync
+    with a device nearby**; a search that finds one device waiting syncs
+    with it at once, and lists them when there are several.
+  - Pairing over Bluetooth works the same between any two devices: the
+    inviting one waits, the other scans its QR code (a computer types
+    its code). Phones pair with each other directly, without a join
+    file.
+  - A new device joins through any one of yours, and the others learn of
+    it at their next sync with a device that knows it: a computer added
+    to your phones pairs with one of them, and syncs with each other
+    phone once that phone has synced with the first. Until then, a phone
+    refuses it and says how to fix it.
+  - A phone whose Bluetooth cannot advertise says so when asked to wait;
+    it still finds and joins the others, and its invitation's QR code
+    still makes a join file.
+  - Removing a device stops it from syncing, but it keeps what it
+    already has. Syncing waits for a paired device, and the Sync screen
+    says so. A phone is named after its model; two devices listed under
+    one name (as reinstalling Arsu leaves: it makes a new device) are
+    pointed out, to remove the earlier one.
+- **A diagnostic report for bug reports**, on every device. When
+  something goes wrong, **About → Save diagnostic report** shows
+  everything the report holds, then saves it as one zip file to attach
+  to an issue, which says why.
+  - The log is JSON Lines: one self-contained JSON object per line, so a
+    crash or a cut-off upload never spoils the rest, and it is easy to
+    search. Every line is a failure: its time (RFC 3339, UTC, to the
+    millisecond), its level, the module, source file and line that
+    recorded it, a short constant message, the error's kind and every
+    cause, its specifics as structured fields (a Bluetooth link's role, a
+    scan's counts), the app run it belongs to (a session id, new at each
+    launch) and its place in that run (a sequence number, which keeps the
+    order if the clock is set back).
+  - It records warnings, errors and critical failures (crashes, a vault
+    that cannot be read or saved, no randomness), nothing routine. A
+    failure carries the steps that led to it (the commands called, by
+    name only, and what Bluetooth and sync did in the five minutes
+    before, 30 at most), kept in memory until then, and each step goes
+    with one failure only; a step repeated is counted rather than
+    repeated. Polling (code refreshes, the auto-lock's heartbeat) is no
+    step. Failures you are told about anyway, such as a wrong password or
+    a mistyped code, are not logged.
+  - Every failure the app reports goes in, from any screen; so do
+    crashes (with their location, and a backtrace where the build has
+    one), errors in the interface itself (its error's name, message and
+    where it happened), and each Bluetooth scan and session that fails,
+    with how far the connection got.
+  - An app run's failures follow a record of what the app and the device
+    were: Arsu's version, build and commit, the operating system and its
+    version (the kernel's on Linux, the API level on Android), the
+    phone's maker and model, the processor, the language and region, the
+    WebView and Tauri versions; an update between two runs shows. A run
+    with no failure writes nothing. No host name, user name or path.
+  - The report holds the log files, oldest first, and an
+    `environment.json`: the device and app as above, and the state the
+    app was in (whether the vault exists and is unlocked, how many
+    devices it trusts, whether biometric unlock is on, the settings).
+    You see it all (the environment and the latest 500 records, or that
+    nothing has gone wrong) before choosing to save it; cancelling saves
+    nothing.
+  - It never holds an account, a secret, a code, an invitation, a
+    password or a device's name; whatever looks like one, your home
+    directory (wherever it is) or a Bluetooth address (all but its last
+    two bytes) is masked as each record is written, so nothing unmasked
+    ever reaches the disk.
+  - The log stays in the app's private log directory, rotated at 1 MB
+    with five files kept (5 MB at most), and never leaves the device
+    unless you save a report. Earlier text logs are deleted.
+- **A QR code scanner on Android.** Point the camera at an account's QR
+  code (**Scan QR code** in the + sheet) or at a sync invitation (**Scan
+  QR** when joining). Arsu asks for the camera the first time you scan,
+  and uses it only while the scanner is open. Joining then asks, in a
+  sheet, whether to pair over Bluetooth or save a join file, as soon as
+  the code is read; errors appear in a sheet too.
+- On Android, Bluetooth sync asks for the **Nearby devices** permission
+  the first time a phone looks for your devices or waits for them
+  (Android 8 to 11 ask for location instead, which they tie to Bluetooth
+  scanning; Location must then be on to find a device). Never at launch, and nothing else: the
+  release build is checked for any other permission, the network above
+  all.
+
+### Security
+
+- **Deleting an account now erases its secret.** A deleted account used
+  to stay in the encrypted vault, secret, name and notes included, only
+  marked as deleted. Now only its id and the time of deletion remain,
+  which a future sync needs to keep it deleted on every device. Vaults
+  written by earlier versions are cleaned the next time they are saved.
+
+### Fixed
+
+- A dialog opened from inside another one (an error shown over the Sync
+  screen, for one) is no longer hidden from screen readers: a closed
+  dialog leaves nothing in the page for an open one to hide.
+- The app no longer zooms when pinched: on a phone or a touchscreen, or
+  with two fingers on a touchpad (Android also zoomed on a
+  double tap).
+
 ## [1.1.3] — 2026-10-06
 
 ### Changed

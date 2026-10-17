@@ -9,7 +9,7 @@ use vault_core::{Entry, OtpConfig, VaultPayload};
 use super::AppState;
 use crate::{
   clock::unix_now,
-  dto::{CodeResponse, EntrySummary, ManualEntryInput, SecretQrSvg, SecretString},
+  dto::{CodeResponse, EntrySummary, ManualEntryInput, SecretString, SecretText},
   error::AppError,
 };
 
@@ -25,7 +25,8 @@ impl AppState {
         .session()
         .unlocked()?
         .payload
-        .active_entries()
+        .entries
+        .iter()
         .map(EntrySummary::from)
         .collect(),
     )
@@ -118,9 +119,9 @@ impl AppState {
     Ok(id)
   }
 
-  /// Deletes an entry. It is tombstoned rather than removed (see
-  /// `vault_core::Entry::deleted_at`), which from the frontend's side is
-  /// the same thing.
+  /// Deletes an entry. It leaves a tombstone behind (see
+  /// [`VaultPayload::delete_entry`]), which from the frontend's side is
+  /// the same thing as removing it.
   ///
   /// # Errors
   ///
@@ -132,10 +133,11 @@ impl AppState {
     let mut session = self.session();
     session.record_activity();
     session.commit(&storage, VaultStorage::save, |payload| {
-      let entry = find_entry_mut(payload, id)?;
-      entry.deleted_at = Some(now);
-      entry.updated_at = now;
-      Ok(())
+      if payload.delete_entry(id, now) {
+        Ok(())
+      } else {
+        Err(AppError::EntryNotFound)
+      }
     })
   }
 
@@ -158,7 +160,7 @@ impl AppState {
     &self,
     id: Uuid,
     master_password: &SecretString,
-  ) -> Result<SecretQrSvg, AppError> {
+  ) -> Result<SecretText, AppError> {
     let (salt, kdf_params) = {
       let mut session = self.session();
       session.record_activity();
@@ -181,10 +183,10 @@ impl AppState {
 
 /// The entry as a QR code of its `otpauth://` URI, secret included: shown
 /// only once the user has proven who they are.
-pub(super) fn entry_qr(payload: &VaultPayload, id: Uuid) -> Result<SecretQrSvg, AppError> {
+pub(super) fn entry_qr(payload: &VaultPayload, id: Uuid) -> Result<SecretText, AppError> {
   let entry = find_entry(payload, id)?;
   let uri = build_otpauth_uri(entry.issuer.as_deref(), &entry.account_label, &entry.otp);
-  Ok(SecretQrSvg::from(encode_qr_svg(&uri)?))
+  Ok(SecretText::from(encode_qr_svg(&uri)?))
 }
 
 /// The vault entry for a newly added account: the one place entries
@@ -201,23 +203,15 @@ pub(super) fn new_entry(account: ParsedAccount, now: u64) -> Entry {
     notes: None,
     created_at: now,
     updated_at: now,
-    deleted_at: None,
   }
 }
 
 pub(super) fn find_entry(payload: &VaultPayload, id: Uuid) -> Result<&Entry, AppError> {
-  payload
-    .active_entries()
-    .find(|entry| entry.id == id)
-    .ok_or(AppError::EntryNotFound)
+  payload.entry(id).ok_or(AppError::EntryNotFound)
 }
 
 fn find_entry_mut(payload: &mut VaultPayload, id: Uuid) -> Result<&mut Entry, AppError> {
-  payload
-    .entries
-    .iter_mut()
-    .find(|entry| entry.id == id && entry.is_active())
-    .ok_or(AppError::EntryNotFound)
+  payload.entry_mut(id).ok_or(AppError::EntryNotFound)
 }
 
 #[cfg(test)]

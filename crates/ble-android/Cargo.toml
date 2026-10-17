@@ -1,0 +1,23 @@
+[package]
+name = "ble-android"
+description = "Arsu as a Bluetooth LE peripheral on Android: advertises, serves Arsu's GATT service, moves sync chunks, decides nothing"
+edition.workspace = true
+publish.workspace = true
+version.workspace = true
+# Names the Gradle project the app includes (see build.rs).
+links = "tauri-plugin-arsu-ble"
+
+[build-dependencies]
+tauri-plugin = { workspace = true, features = ["build"] }
+
+[dependencies]
+base64 = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+tauri = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+vault-sync = { workspace = true }
+
+[lints]
+workspace = true

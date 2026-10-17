@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { decodeSize, MAX_DECODE_PIXELS, readQrCode, scanQrImage } from './qr-image';
+import { decodeSize, decodeSizes, MAX_DECODE_PIXELS, readQrCode, scanQrImage } from './qr-image';
 
 import type { PixelSize } from './qr-image';
 
@@ -90,6 +90,27 @@ describe('decodeSize', () => {
   });
 });
 
+describe('decodeSizes', () => {
+  it('tries a camera photo at the full budget, then smaller', () => {
+    const sizes = decodeSizes(4000, 3000);
+
+    expect(sizes.length).toBe(3);
+    expect(sizes[0].width * sizes[0].height).toBeLessThanOrEqual(MAX_DECODE_PIXELS);
+    for (let i = 1; i < sizes.length; i += 1) {
+      expect(sizes[i].width).toBeLessThan(sizes[i - 1].width);
+      expect(sizes[i].width / sizes[i].height).toBeCloseTo(4000 / 3000, 1);
+    }
+  });
+
+  it('tries a small image as it is only', () => {
+    expect(decodeSizes(200, 200)).toEqual([{ width: 200, height: 200 }]);
+  });
+
+  it('has nothing to try for an image with no area', () => {
+    expect(decodeSizes(0, 100)).toEqual([]);
+  });
+});
+
 describe('readQrCode', () => {
   it('reads a dark-on-light code', () => {
     const { pixels, size } = fixturePixels();
@@ -112,7 +133,10 @@ describe('readQrCode', () => {
 
 describe('scanQrImage', () => {
   /** Stands in for the worker's createImageBitmap and OffscreenCanvas. */
-  function stubCanvas(bitmap: { width: number; height: number }, pixels: Uint8ClampedArray) {
+  function stubCanvas(
+    bitmap: { width: number; height: number },
+    pixels: Uint8ClampedArray | 'blank',
+  ) {
     const close = vi.fn();
     const drawImage =
       vi.fn<(image: unknown, x: number, y: number, width: number, height: number) => void>();
@@ -124,7 +148,13 @@ describe('scanQrImage', () => {
       'OffscreenCanvas',
       class {
         getContext() {
-          return { drawImage, getImageData: () => ({ data: pixels }) };
+          return {
+            drawImage,
+            getImageData: (_x: number, _y: number, width: number, height: number) => ({
+              data:
+                pixels === 'blank' ? new Uint8ClampedArray(width * height * 4).fill(255) : pixels,
+            }),
+          };
         }
       },
     );
@@ -152,18 +182,63 @@ describe('scanQrImage', () => {
     await expect(scanQrImage(new Blob())).resolves.toEqual({ status: 'not-found' });
   });
 
-  it('draws a large image scaled down', async () => {
-    const { drawImage } = stubCanvas(
-      { width: 8000, height: 8000 },
-      new Uint8ClampedArray(4).fill(255),
-    );
+  it('draws a large image scaled down, then smaller while it finds no code', async () => {
+    const { drawImage } = stubCanvas({ width: 8000, height: 8000 }, 'blank');
+
+    await scanQrImage(new Blob());
+
+    // A photo's code can be too blurred to read at full size, and sharp
+    // enough once scaled down.
+    const widths = drawImage.mock.calls.map(([, , , width]) => width);
+    expect(widths.length).toBe(3);
+    const [, , , width, height] = drawImage.mock.calls[0];
+    expect(width * height).toBeLessThanOrEqual(MAX_DECODE_PIXELS);
+    expect(widths[1]).toBeLessThan(widths[0]);
+    expect(widths[2]).toBeLessThan(widths[1]);
+  });
+
+  it('stops at the first size that reads the code', async () => {
+    const { pixels, size } = fixturePixels();
+    const { drawImage } = stubCanvas(size, pixels);
 
     await scanQrImage(new Blob());
 
     expect(drawImage).toHaveBeenCalledOnce();
-    const [, , , width = 0, height = 0] = drawImage.mock.lastCall ?? [];
-    expect(width).toBeGreaterThan(0);
-    expect(width * height).toBeLessThanOrEqual(MAX_DECODE_PIXELS);
+  });
+
+  it('asks the platform barcode detector first, where there is one', async () => {
+    const { drawImage, close } = stubCanvas({ width: 8, height: 8 }, new Uint8ClampedArray(256));
+    vi.stubGlobal(
+      'BarcodeDetector',
+      class {
+        static getSupportedFormats = () => Promise.resolve(['qr_code', 'ean_13']);
+        detect = () => Promise.resolve([{ rawValue: 'ARSU-INVITE:ABC' }]);
+      },
+    );
+
+    await expect(scanQrImage(new Blob())).resolves.toEqual({
+      status: 'found',
+      text: 'ARSU-INVITE:ABC',
+    });
+    expect(drawImage).not.toHaveBeenCalled();
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('falls back to its own reader when the platform detector fails', async () => {
+    const { pixels, size } = fixturePixels();
+    stubCanvas(size, pixels);
+    vi.stubGlobal(
+      'BarcodeDetector',
+      class {
+        static getSupportedFormats = () => Promise.resolve(['qr_code']);
+        detect = () => Promise.reject(new DOMException('no service', 'NotSupportedError'));
+      },
+    );
+
+    await expect(scanQrImage(new Blob())).resolves.toEqual({
+      status: 'found',
+      text: FIXTURE_TEXT,
+    });
   });
 
   it('reports an image with no pixels as unreadable', async () => {
