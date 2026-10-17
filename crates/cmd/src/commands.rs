@@ -98,13 +98,15 @@ pub async fn unlock_vault(app: AppHandle, master_password: SecretString) -> Resu
   with_state(app, move |state| state.unlock_vault(&master_password)).await
 }
 
-/// Locks the vault: the key and every decrypted seed leave memory.
+/// Locks the vault: the key and every decrypted seed leave memory, and
+/// Bluetooth sync or pairing stops.
 ///
 /// # Errors
 ///
 /// Only `BackgroundTask`.
 #[tauri::command]
 pub async fn lock_vault(app: AppHandle) -> Result<(), AppError> {
+  app.state::<Bluetooth>().stop();
   with_state(app, |state| {
     state.lock_vault();
     Ok(())

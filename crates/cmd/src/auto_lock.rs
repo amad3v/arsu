@@ -12,7 +12,7 @@ use std::{io, thread, time::Duration};
 
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::{clock::BootInstant, state::AppState};
+use crate::{bluetooth::Bluetooth, clock::BootInstant, state::AppState};
 
 /// Emitted, with no payload, whenever the backend locks the vault on
 /// its own; the frontend then shows the unlock screen.
@@ -42,6 +42,8 @@ pub fn spawn(app: AppHandle) -> io::Result<()> {
         thread::sleep(CHECK_INTERVAL);
         let state = app.state::<AppState>();
         if state.lock_if_idle(BootInstant::now()) || (phone_locked() && state.lock_if_unlocked()) {
+          // A locked vault has nothing to sync.
+          app.state::<Bluetooth>().stop();
           // The vault is locked either way; if no window is left to
           // tell, there is nothing more to do.
           let _ = app.emit(VAULT_LOCKED_EVENT, ());
