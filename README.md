@@ -58,17 +58,57 @@ yay -S arsu   # or arsu-bin; any AUR helper, or git clone + makepkg
 
 Each [release](https://github.com/amad3v/arsu/releases) has the APK, `arsu-<version>.apk`; or build it from source (see [Building for Android](#building-for-android)). It needs Android 8.0 (API 26) or later, with an up-to-date Android System WebView (version 111 or later; tested with 138, the last one Android 8 and 9 get).
 
+## Syncing your devices
+
+Arsu keeps one vault the same on all your phones and computers without any network: devices talk to each other directly over Bluetooth, or through a sync file you move yourself. Accounts added on one device appear on the others, deleted ones are deleted everywhere, HOTP counters never go back, and an account added on two devices ends up once. Each device keeps its own master password.
+
+Sync is optional: a single device needs none of it.
+
+### What you need
+
+- **Bluetooth LE** on both devices, and both vaults unlocked.
+- **On Linux:** BlueZ (the `bluez` package) with the Bluetooth service running (`systemctl enable --now bluetooth`). To wait for other devices, the adapter must be able to advertise, as nearly every built-in adapter and recent USB dongle can.
+- **On Android:** the **Nearby devices** permission (Android 12 and later), or location (Android 8 to 11, which tie Bluetooth scanning to it; Location must then be on to find a device). Arsu asks the first time it needs it. A phone whose Bluetooth can't advertise still finds and joins the others; it just can't be the one that waits.
+- **No Bluetooth?** Sync files do the same job; see below.
+
+### Pairing a device, once
+
+Open **Sync**: the header's Sync button on a computer, **Settings → Sync with your devices** on a phone.
+
+1. On a device that already has your vault, choose **Pair a new device**. It shows an invitation, as a QR code and a code to type, good for one pairing within 15 minutes, and waits.
+2. On the new device, choose **Join with an invitation**. A phone scans the QR code (**Scan QR**); a computer types the code, or opens a picture of the QR code (**Open image**).
+3. Confirm **Pair over Bluetooth**. Both devices then have the accounts of both vaults.
+
+A new device only needs to pair with one of yours: the others learn of it at their next sync with a device that knows it.
+
+### Syncing
+
+On one device choose **Wait for my devices**, on the other **Sync with a device nearby**. If it finds one device waiting, it syncs with it at once; if several, it lists them. A device that waits keeps serving your devices one after another until you leave the screen. Locking the vault stops it.
+
+### Without Bluetooth: join files and sync files
+
+- **To pair:** after scanning the invitation's QR code, choose **Save a join file instead**, open that file on the device that showed the invitation, and open the sync file it gives back on the new device (**Open a sync file**).
+- **To sync:** choose **Sync file** next to a device to save a file for it, then open it on that device with **Open a sync file**.
+
+A sync file (`.arsu`) is encrypted for the one device it is meant for, so it is safe to move over any channel.
+
+### Removing a device
+
+**Remove** next to a device stops it from syncing with your vault; it keeps the accounts it already has. A reinstalled Arsu is a new device: when two devices share a name, the Sync screen points it out, so you can remove the old one.
+
 ## Your data
 
 On Linux:
 
-| What                  | Where                                                                  |
-| --------------------- | ---------------------------------------------------------------------- |
-| Vault                 | `$XDG_DATA_HOME/arsu/vault` (`~/.local/share/arsu/vault`)              |
-| Its previous versions | `vault.bak.1` to `vault.bak.3`, next to it                             |
-| Settings              | `$XDG_CONFIG_HOME/arsu/settings.json` (`~/.config/arsu/settings.json`) |
+| What                  | Where                                                                                    |
+| --------------------- | ---------------------------------------------------------------------------------------- |
+| Vault                 | `$XDG_DATA_HOME/arsu/vault` (`~/.local/share/arsu/vault`)                                |
+| Its previous versions | `vault.bak.1` to `vault.bak.3`, next to it                                               |
+| Settings              | `$XDG_CONFIG_HOME/arsu/settings.json` (`~/.config/arsu/settings.json`)                   |
+| This device's id      | `$XDG_STATE_HOME/arsu/installation-id` (`~/.local/state/arsu/installation-id`), for sync |
+| Diagnostic log        | `~/.local/share/io.github.amad3v.arsu/logs/`                                             |
 
-On Android, both live in the app's private storage, `/data/user/0/io.github.amad3v.arsu/` (`vault/vault` and `settings/settings.json`), which no other app can read. The vault is left out of Android's cloud backup. To keep a copy, use **Export**: it writes an encrypted Aegis backup wherever you choose.
+On Android, they live in the app's private storage, `/data/user/0/io.github.amad3v.arsu/` (`vault/vault`, `settings/settings.json` and `sync/installation-id`), which no other app can read. The vault is left out of Android's cloud backup, and the device's id stays behind when you move to a new phone, so the new phone is a device of its own. To keep a copy, use **Export**: it writes an encrypted Aegis backup wherever you choose.
 
 **Back up the vault file.** It is the whole backup: copy it anywhere, since it can't be read without your master password.
 
@@ -137,11 +177,11 @@ pnpm lint && pnpm typecheck && pnpm fmt:check && pnpm test
 
 ### Layout
 
-| Path         | What                                                                                                                          |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------- |
-| `crates/`    | The Rust core: `crypto`, `vault-core`, `otp`, `qr`, `storage`, `interop`, and `cmd` (the commands the interface calls)        |
-| `src-tauri/` | The app shell: process hardening, window, command permissions, Content Security Policy; the Android project in `gen/android/` |
-| `src/`       | The interface, in SolidJS                                                                                                     |
+| Path         | What                                                                                                                                                                                                                                                                  |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `crates/`    | The Rust core: `crypto`, `vault-core`, `otp`, `qr`, `storage`, `interop`, `vault-sync` (merging, devices, encrypted sessions and sync files), `ble-linux` and `ble-android` (Bluetooth LE through BlueZ and on Android), and `cmd` (the commands the interface calls) |
+| `src-tauri/` | The app shell: process hardening, window, command permissions, Content Security Policy; the Android project in `gen/android/`                                                                                                                                         |
+| `src/`       | The interface, in SolidJS                                                                                                                                                                                                                                             |
 
 ## License
 
