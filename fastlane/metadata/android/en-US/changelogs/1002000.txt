@@ -1,0 +1,4 @@
+• Sync your phones and computers with each other, without any network: pair once with a QR code, then sync over Bluetooth or with an encrypted sync file.
+• Scan QR codes with the camera, for accounts and sync invitations.
+• About → Save diagnostic report: what went wrong, with no account or secret in it, to attach to a bug report.
+• Deleting an account now erases its secret. The app no longer zooms when pinched.

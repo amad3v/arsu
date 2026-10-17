@@ -3,7 +3,7 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.2.0] — 2026-10-17
 
 ### Added
 
@@ -100,9 +100,9 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
 - On Android, Bluetooth sync asks for the **Nearby devices** permission
   the first time a phone looks for your devices or waits for them
   (Android 8 to 11 ask for location instead, which they tie to Bluetooth
-  scanning; Location must then be on to find a device). Never at launch, and nothing else: the
-  release build is checked for any other permission, the network above
-  all.
+  scanning; Location must then be on to find a device). Never at launch,
+  and nothing else: the release build is checked for any other
+  permission, the network above all.
 
 ### Security
 
