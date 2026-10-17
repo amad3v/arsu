@@ -119,6 +119,8 @@ class BlePeripheralPlugin(private val activity: Activity) : Plugin(activity) {
     /** Sessions waiting for the service to be added, to go on starting. */
     private val serviceWaiters = mutableListOf<(Boolean) -> Unit>()
     private var session: Session? = null
+    /** The newest session stopped: a start that arrives after its own stop does not advertise. */
+    private var stopped = -1L
     /** The last session's central while it stays connected: refused until it leaves. */
     private var dismissed: String? = null
     private var advertiser: BluetoothLeAdvertiser? = null
@@ -208,6 +210,10 @@ class BlePeripheralPlugin(private val activity: Activity) : Plugin(activity) {
             return
         }
         synchronized(lock) {
+            if (args.session <= stopped) {
+                invoke.reject("the session has ended", "failed")
+                return
+            }
             stopAdvertising()
             failPendingNotify("a new session started")
             session?.let { dismissIfConnected(it) }
@@ -264,6 +270,7 @@ class BlePeripheralPlugin(private val activity: Activity) : Plugin(activity) {
     fun stop(invoke: Invoke) {
         val args = invoke.parseArgs(StopArgs::class.java)
         synchronized(lock) {
+            stopped = maxOf(stopped, args.session)
             // An earlier session's stop, arriving after the next one started, is not for it.
             session?.takeIf { it.id == args.session }?.let { ended ->
                 stopAdvertising()
@@ -377,14 +384,16 @@ class BlePeripheralPlugin(private val activity: Activity) : Plugin(activity) {
                 invoke.reject("advertising failed (error $errorCode)", code)
             }
         }
+        // Started under the lock, so that a stop sees the advertisement it stops.
         val current = synchronized(lock) {
-            (session?.id == sessionId).also { if (it) advertising = started }
+            (session?.id == sessionId).also {
+                if (it) {
+                    advertising = started
+                    leAdvertiser.startAdvertising(settings, data, started)
+                }
+            }
         }
-        if (current) {
-            leAdvertiser.startAdvertising(settings, data, started)
-        } else {
-            invoke.reject("the session has ended", "failed")
-        }
+        if (!current) invoke.reject("the session has ended", "failed")
     }
 
     /** Under the lock. */

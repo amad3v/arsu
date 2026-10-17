@@ -233,18 +233,17 @@ impl<R: Runtime> BlePeripheral<R> {
       },
       events: self.0.reports.clone(),
     };
-    let shared = Arc::clone(&self.0);
-    let started = call(move || shared.handle.run_mobile_plugin::<()>("start", args)).await;
-    if let Err(error) = started {
-      self.0.route.close(session);
-      return Err(error);
-    }
-    Ok(Session {
+    // The session exists before Android answers: dropped meanwhile (the
+    // caller stopped waiting) or failed, it stops what Kotlin started.
+    let session = Session {
       shared: Arc::clone(&self.0),
       id: session,
       events,
       central: None,
-    })
+    };
+    let shared = Arc::clone(&self.0);
+    call(move || shared.handle.run_mobile_plugin::<()>("start", args)).await?;
+    Ok(session)
   }
 }
 
