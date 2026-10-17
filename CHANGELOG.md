@@ -39,7 +39,9 @@ section here. Versions follow [Semantic Versioning](https://semver.org).
     already has. Syncing waits for a paired device, and the Sync screen
     says so. A phone is named after its model; two devices listed under
     one name (as reinstalling Arsu leaves: it makes a new device) are
-    pointed out, to remove the earlier one.
+    pointed out, to remove the earlier one. A phone set up from another
+    with Android's transfer is a new device too, never a copy of the old
+    one.
 - **A diagnostic report for bug reports**, on every device. When
   something goes wrong, **About → Save diagnostic report** shows
   everything the report holds, then saves it as one zip file to attach

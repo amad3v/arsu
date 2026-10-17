@@ -42,9 +42,12 @@
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <!-- allowBackup="false": the vault stays out of Android's cloud
-         backup, which would upload it to the user's Google account. -->
+         backup, which would upload it to the user's Google account.
+         From Android 12 on, that no longer covers moving to a new phone:
+         dataExtractionRules keeps the device's sync identity behind. -->
     <application
         android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:theme="@style/Theme.arsu"
