@@ -281,7 +281,9 @@ impl GattServer {
     } else {
       self.central = None;
     }
-    *self.notifier.lock().await = None;
+    // The notifier stays: `BlueZ` asks to start notifying only when a first
+    // central subscribes, so a central arriving while the last session's
+    // is still subscribed brings no new one.
     while self.events.try_recv().is_ok() {}
     let handle = self.adapter.advertise(advertisement(advertising)).await?;
     // The address a central connects to, to match against its own log
@@ -327,6 +329,13 @@ impl GattServer {
   /// [`BleError::Bluetooth`] if the notification fails.
   pub async fn send(&mut self, chunk: Vec<u8>) -> Result<(), BleError> {
     let mut notifier = self.notifier.lock().await;
+    // Stopped once every central has unsubscribed.
+    if notifier
+      .as_ref()
+      .is_some_and(CharacteristicNotifier::is_stopped)
+    {
+      *notifier = None;
+    }
     let notifier = notifier.as_mut().ok_or(BleError::NotSubscribed)?;
     Ok(notifier.notify(chunk).await?)
   }
