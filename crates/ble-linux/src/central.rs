@@ -81,9 +81,26 @@ impl Central {
     let session = bluer::Session::new().await?;
     let adapter = session.default_adapter().await?;
     let device = adapter.device(address)?;
-    if !device.is_connected().await? {
+    let connecting = !device.is_connected().await?;
+    if connecting {
       device.connect().await?;
     }
+    match Self::open(device.clone()).await {
+      Ok(central) => Ok(central),
+      Err(error) => {
+        // A link this opened, to a device that turned out not to serve
+        // Arsu (or failed), is not left behind.
+        if connecting {
+          let _ = device.disconnect().await;
+        }
+        Err(error)
+      }
+    }
+  }
+
+  /// Finds Arsu's characteristics on the connected `device` and
+  /// subscribes.
+  async fn open(device: Device) -> Result<Self, BleError> {
     let (rx, tx) = arsu_characteristics(&device).await?;
     // Subscribe before writing anything: the peripheral answers by
     // notification.
