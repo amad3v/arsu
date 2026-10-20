@@ -136,7 +136,7 @@ dependencies = [
 
 [[package]]
 name = "arsu"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "biometric",
  "ble-android",
@@ -350,7 +350,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "biometric"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base64 0.23.1",
  "serde",
@@ -410,7 +410,7 @@ dependencies = [
 
 [[package]]
 name = "ble-android"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base64 0.23.1",
  "log",
@@ -424,7 +424,7 @@ dependencies = [
 
 [[package]]
 name = "ble-linux"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "bluer",
  "futures-util",
@@ -881,7 +881,7 @@ dependencies = [
 
 [[package]]
 name = "cmd"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "android_system_properties",
  "arboard",
@@ -1056,7 +1056,7 @@ checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
 name = "crypto"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "argon2",
  "chacha20poly1305 0.11.0",
@@ -2507,7 +2507,7 @@ dependencies = [
 
 [[package]]
 name = "interop"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "aes-gcm",
  "base64 0.23.1",
@@ -3276,7 +3276,7 @@ dependencies = [
 
 [[package]]
 name = "otp"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "hmac",
  "serde",
@@ -3695,7 +3695,7 @@ dependencies = [
 
 [[package]]
 name = "qr"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base32",
  "otp",
@@ -4446,7 +4446,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "storage"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "crypto",
  "ctutils",
@@ -5441,7 +5441,7 @@ dependencies = [
 
 [[package]]
 name = "vault-core"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "ciborium",
  "crypto",
@@ -5456,7 +5456,7 @@ dependencies = [
 
 [[package]]
 name = "vault-sync"
-version = "1.2.0"
+version = "1.2.1"
 dependencies = [
  "base32",
  "getrandom 0.4.3",
