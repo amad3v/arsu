@@ -3,6 +3,16 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Fixed
+
+- The commit a build records for the diagnostic report now comes from
+  the source checkout (`git rev-parse HEAD`), not only from GitHub's
+  `GITHUB_SHA`: a build outside GitHub recorded "local build" instead, so
+  F-Droid's rebuild of the APK could not match the release's. A build
+  from a source tarball, with no git, still records "local build".
+
 ## [1.2.0] — 2026-10-17
 
 ### Added
