@@ -2,14 +2,19 @@ name: Release
 
 # Builds every release artifact: the Linux binary, its .deb and .rpm, and
 # the signed Android APK. Then, when publishing, the GitHub release with
-# its notes from CHANGELOG.md and a SHA256SUMS file.
+# its notes from CHANGELOG.md and a SHA256SUMS file, as a draft.
+#
+# The release stays a draft because releases are immutable once
+# published: the maintainer's signature of SHA256SUMS (made off CI, where
+# the GPG key never goes) is attached to the draft, which is then
+# published (`aur-release.sh`, in the private workflow repository).
 #
 # - Pushing a version tag (the usual way: a GPG-signed tag, which the AUR
-#   `arsu` package requires) builds and publishes that release.
+#   `arsu` package requires) builds that release's draft.
 # - Running it by hand builds the artifacts for the commit it runs on; with
-#   `publish`, it also publishes the release, creating the tag at that
-#   commit if it doesn't exist (an unsigned tag, which the AUR `arsu`
-#   package cannot build from).
+#   `publish`, it also creates the draft, whose tag is created at that
+#   commit, if it doesn't exist, when the draft is published (an unsigned
+#   tag, which the AUR `arsu` package cannot build from).
 
 on:
   push:
@@ -20,7 +25,7 @@ on:
         description: 'Version tag, e.g. v1.1.0 (must match the version in Cargo.toml)'
         required: true
       publish:
-        description: 'Publish the release (creating the tag if needed)'
+        description: 'Create the release, as a draft to sign and publish (its tag, if new, is created on publishing)'
         type: boolean
         default: false
 
@@ -272,7 +277,7 @@ jobs:
           path: rebuilt/*
 
   release:
-    name: Publish the release
+    name: Draft the release
     needs: [prepare, linux, android, android-reproducible]
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-24.04
@@ -307,7 +312,8 @@ jobs:
           else
             target=(--target "$GITHUB_SHA")
           fi
-          gh release create "$TAG" "${target[@]}" \
+          # A draft: the signed SHA256SUMS.asc can still be attached.
+          gh release create "$TAG" "${target[@]}" --draft \
             --title "Arsu $VERSION" \
             --notes-file artifacts/notes/notes.md \
             dist/*
