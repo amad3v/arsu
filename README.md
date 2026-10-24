@@ -10,6 +10,28 @@ Arsu keeps your two-factor secrets in a single encrypted file on your machine an
 
 Named after Arsu, the god of the evening star worshipped at Palmyra, who protected the caravans crossing the desert.
 
+<p align="center">
+  <a href="https://github.com/amad3v/arsu/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/amad3v/arsu?style=for-the-badge&logo=github&logoColor=333333&labelColor=cbd5e1"></a>
+  <a href="https://github.com/amad3v/arsu/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/amad3v/arsu/total?style=for-the-badge&logo=github&logoColor=333333&labelColor=cbd5e1"></a>
+  <a href="https://github.com/amad3v/arsu/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/amad3v/arsu?style=for-the-badge&labelColor=cbd5e1"></a>
+  <a href="https://github.com/amad3v/arsu/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/amad3v/arsu?style=for-the-badge&labelColor=cbd5e1"></a>
+  <a href="https://github.com/amad3v/arsu/issues"><img alt="Issues" src="https://img.shields.io/github/issues/amad3v/arsu?style=for-the-badge&labelColor=cbd5e1"></a>
+</p>
+
+<p align="center">
+  <a href="https://aur.archlinux.org/packages/arsu"><img alt="AUR arsu" src="https://img.shields.io/aur/version/arsu?style=for-the-badge&logo=archlinux&logoColor=333333&label=AUR%20arsu&labelColor=cbd5e1"></a>
+  <a href="https://aur.archlinux.org/packages/arsu-bin"><img alt="AUR arsu-bin" src="https://img.shields.io/aur/version/arsu-bin?style=for-the-badge&logo=archlinux&logoColor=333333&label=AUR%20arsu-bin&labelColor=cbd5e1"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/amad3v/arsu/releases/latest">
+    <img alt="Get it on GitHub" src="assets/badge_github.png" height="80">
+  </a>
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22io.github.amad3v.arsu%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2Famad3v%2Farsu%22%2C%22author%22%3A%22amad3v%22%2C%22name%22%3A%22Arsu%22%7D">
+    <img alt="Get it on Obtainium" src="assets/badge_obtainium.png" height="80">
+  </a>
+</p>
+
 ## Features
 
 - **Encrypted vault.** Your master password is stretched with Argon2id (256 MiB, 3 passes), and the whole vault is encrypted with XChaCha20-Poly1305. The file is useless without the password.
