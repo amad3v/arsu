@@ -1,0 +1,2 @@
+• Bluetooth sync started from a phone is faster: it sent in 20-byte pieces instead of the size agreed with the other device.
+• Searching for devices works again after Bluetooth was turned off during a search, without restarting Arsu.

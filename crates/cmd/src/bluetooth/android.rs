@@ -8,7 +8,7 @@ use std::time::Duration;
 use ble_android::BlePeripheralExt;
 use tauri::{AppHandle, Wry};
 use tauri_plugin_blec::{
-  ALLOW_IBEACONS, Handler, OnDisconnectHandler, check_permissions, get_handler,
+  ALLOW_IBEACONS, Connection, Handler, OnDisconnectHandler, check_permissions, get_handler,
   models::{AdapterState, ScanFilter, WriteType},
 };
 use tokio::sync::mpsc;
@@ -46,9 +46,8 @@ impl BlecCentral {
   ///
   /// Asked first rather than learnt from a failure: the plugin's scan,
   /// started with Bluetooth off, fails with an error that does not say
-  /// so, and keeps refusing every later scan as one already running
-  /// (its Android half records the scan before Android refuses it). A
-  /// state the plugin cannot tell is left for the operation to find out.
+  /// so. A state the plugin cannot tell is left for the operation to find
+  /// out.
   ///
   /// # Errors
   ///
@@ -62,19 +61,18 @@ impl BlecCentral {
 
   /// Readies the connected peripheral for a session: notifications from
   /// `tx` before anything is written, as the peripheral answers by them.
-  async fn open(&self) -> Result<BlecPeer, AppError> {
+  async fn open(connection: Connection) -> Result<BlecPeer, AppError> {
     let (notified, incoming) = mpsc::unbounded_channel();
-    self
-      .0
+    connection
       .subscribe(TX_UUID, Some(SERVICE_UUID), move |chunk: Vec<u8>| {
         // The session is gone if nobody receives; the chunk with it.
         let _ = notified.send(chunk);
       })
       .await
       .map_err(AppError::Blec)?;
-    let att_mtu = usize::from(self.0.mtu().await.map_err(AppError::Blec)?);
+    let att_mtu = usize::from(connection.mtu().await.map_err(AppError::Blec)?);
     Ok(BlecPeer {
-      handler: self.0,
+      connection,
       incoming,
       idle: Idle::started(),
       att_mtu,
@@ -143,7 +141,7 @@ impl Central for BlecCentral {
     Handler::set_android_mtu_request(REQUESTED_MTU);
     // The plugin scans again for an address it has not seen; that scan
     // needs location as much as the first one.
-    self
+    let connection = self
       .0
       .connect(
         address,
@@ -152,27 +150,29 @@ impl Central for BlecCentral {
       )
       .await
       .map_err(AppError::Blec)?;
-    match self.open().await {
+    match Self::open(connection.clone()).await {
       Ok(peer) => {
         let att_mtu = peer.att_mtu;
         Ok((peer, att_mtu))
       }
       Err(error) => {
         // Connected but unusable: leave nothing open behind.
-        let _ = self.0.disconnect().await;
+        let _ = connection.disconnect().await;
         Err(error)
       }
     }
   }
 
-  async fn disconnect(&self, _peer: BlecPeer) {
-    let _ = self.0.disconnect().await;
+  async fn disconnect(&self, peer: BlecPeer) {
+    let _ = peer.connection.disconnect().await;
   }
 }
 
-/// A connection to a peripheral, as a [`ChunkPeer`].
+/// A connection to a peripheral, as a [`ChunkPeer`]. Every operation
+/// names the peripheral's address, so a session only ever works on the
+/// device it connected to.
 pub struct BlecPeer {
-  handler: &'static Handler,
+  connection: Connection,
   incoming: mpsc::UnboundedReceiver<Vec<u8>>,
   idle: Idle,
   att_mtu: usize,
@@ -186,7 +186,7 @@ impl ChunkPeer for BlecPeer {
 
   async fn send_chunk(&mut self, chunk: Vec<u8>) -> Result<(), AppError> {
     self
-      .handler
+      .connection
       .send_data(RX_UUID, Some(SERVICE_UUID), &chunk, WriteType::WithResponse)
       .await
       .map_err(AppError::Blec)

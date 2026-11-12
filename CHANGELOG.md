@@ -3,6 +3,24 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [1.2.2] — 2026-11-12
+
+### Fixed
+
+- **Android:** Bluetooth sync started from a phone is faster. The phone
+  sent in 20-byte pieces, the Bluetooth minimum, instead of the size it
+  had agreed with the other device (up to 512 bytes).
+- **Android:** after Bluetooth was turned off during a search for
+  devices, every later search failed until Arsu was restarted.
+
+### Changed
+
+- `tauri-plugin-blec` 0.20, for the two fixes above.
+- Dependencies with security advisories updated: `ctutils` (constant-time
+  checks used by the vault's encryption), `tokio`, `rustix`, `zip` 9 and
+  `solid-js` 1.9.18. The `zip` and `seroval` (Solid's) advisories cover
+  extracting archives and server-side rendering, which Arsu does not do.
+
 ## [1.2.1] — 2026-10-20
 
 ### Fixed
