@@ -57,10 +57,10 @@ gpg --verify SHA256SUMS.asc SHA256SUMS
 sha256sum --check --ignore-missing SHA256SUMS
 
 # Debian, Ubuntu and derivatives
-sudo apt install ./arsu_1.2.2_amd64.deb
+sudo apt install ./arsu_1.2.3_amd64.deb
 
 # Fedora, openSUSE and other RPM-based distributions
-sudo dnf install ./arsu-1.2.2-1.x86_64.rpm
+sudo dnf install ./arsu-1.2.3-1.x86_64.rpm
 ```
 
 `gpg --verify` must report a good signature from Mohamed Jouini <amad3v@gmail.com>, key fingerprint `6A70 0E00 3968 20D9 3A82  9FF9 1CAC 141C 3451 6CB6`.
