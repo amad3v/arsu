@@ -3,6 +3,16 @@
 Every notable change to Arsu, newest first. A release's notes are its
 section here. Versions follow [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Fixed
+
+- **QR scanner:** on some phones the rear camera Android's WebView picks
+  makes the phone's own camera service fail, which left a black screen.
+  The scanner now sees that the camera stopped and moves on to another
+  rear camera, the sharpest first. It remembers the camera it moved to, by name, and
+  opens it first next time. Phones whose camera works are unchanged.
+
 ## [1.2.2] — 2026-11-12
 
 ### Fixed
