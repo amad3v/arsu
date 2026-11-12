@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@solidjs/testing-library';
 import { createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { camerasToTry } from './camera';
 import { createFrameReader } from './frame-reader';
 
 import { QrScanner } from '.';
@@ -12,10 +13,33 @@ vi.mock('./frame-reader', () => ({ createFrameReader: vi.fn() }));
 
 const INVITATION = 'ARSU-INVITE:0123456789';
 
-/** A camera stream whose one track records being stopped. */
-function fakeStream() {
-  const track = { stop: vi.fn() };
-  return { track, stream: { getTracks: () => [track] } as unknown as MediaStream };
+/** A camera stream whose one track records being stopped, and can stop on its own. */
+function fakeStream(deviceId = 'main') {
+  const track = {
+    readyState: 'live' as MediaStreamTrackState,
+    label: deviceId,
+    stop: vi.fn(),
+    getSettings: () => ({ deviceId }),
+  };
+  const stream = { getTracks: () => [track], getVideoTracks: () => [track] };
+  return { track, stream: stream as unknown as MediaStream };
+}
+
+/** A camera as the system lists it. */
+function camera(deviceId: string, facing: 'environment' | 'user', width: number) {
+  return {
+    kind: 'videoinput',
+    deviceId,
+    label: deviceId,
+    getCapabilities: () => ({ facingMode: [facing], width: { min: 1, max: width } }),
+  };
+}
+
+/** The constraints of each camera asked for, in order. */
+function camerasAskedFor() {
+  return getUserMedia.mock.calls.map(
+    ([constraints]) => (constraints as MediaStreamConstraints).video as MediaTrackConstraints,
+  );
 }
 
 /** The frame reader answers each frame with the next scan, then finds nothing. */
@@ -40,16 +64,19 @@ function renderScanner(onScan = vi.fn()) {
       onClose={onClose}
     />
   ));
-  return { onScan, onClose, close: () => setOpen(false) };
+  return { onScan, onClose, close: () => setOpen(false), reopen: () => setOpen(true) };
 }
 
 let getUserMedia: ReturnType<typeof vi.fn>;
+let enumerateDevices: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+  localStorage.clear();
   getUserMedia = vi.fn();
+  enumerateDevices = vi.fn(() => Promise.resolve([]));
   // jsdom has no camera API.
   Object.defineProperty(navigator, 'mediaDevices', {
-    value: { getUserMedia },
+    value: { getUserMedia, enumerateDevices },
     configurable: true,
   });
   vi.stubGlobal(
@@ -192,5 +219,196 @@ describe('the QR scanner', () => {
     grant(stream);
 
     await waitFor(() => expect(track.stop).toHaveBeenCalled());
+  });
+});
+
+describe('a camera that stops', () => {
+  const CAMERA_KEY = 'arsu.scanner-camera';
+
+  it('is let go, and the next rear camera starts', async () => {
+    const broken = fakeStream('broken');
+    getUserMedia.mockResolvedValueOnce(broken.stream).mockResolvedValue(fakeStream('main').stream);
+    enumerateDevices.mockResolvedValue([
+      camera('broken', 'environment', 4608),
+      camera('main', 'environment', 4608),
+    ]);
+    readerAnswering();
+    renderScanner();
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+
+    broken.track.readyState = 'ended';
+
+    expect(await screen.findByText('The camera stopped. Starting another one…')).toBeTruthy();
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    expect(broken.track.stop).toHaveBeenCalled();
+    expect(camerasAskedFor()[1]).toMatchObject({ deviceId: { exact: 'main' } });
+    expect(await screen.findByText('Point the camera at the QR code.')).toBeTruthy();
+  });
+
+  it('waits for the system to list its cameras again', async () => {
+    const broken = fakeStream('broken');
+    getUserMedia.mockResolvedValueOnce(broken.stream).mockResolvedValue(fakeStream('main').stream);
+    // A failed camera service lists no camera until it is back.
+    enumerateDevices
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([
+        camera('broken', 'environment', 4608),
+        camera('main', 'environment', 4608),
+      ]);
+    readerAnswering();
+    renderScanner();
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+
+    broken.track.readyState = 'ended';
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2), { timeout: 3000 });
+    expect(camerasAskedFor()[1]).toMatchObject({ deviceId: { exact: 'main' } });
+  });
+
+  it('says the camera failed once no other camera is left', async () => {
+    const broken = fakeStream('broken');
+    getUserMedia.mockResolvedValue(broken.stream);
+    enumerateDevices.mockResolvedValue([camera('broken', 'environment', 4608)]);
+    readerAnswering();
+    renderScanner();
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    // Time runs fast: the wait for other cameras is over at its first look.
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => (clock += 60_000));
+
+    broken.track.readyState = 'ended';
+
+    expect(await screen.findByText(/The camera could not start/)).toBeTruthy();
+    expect(getUserMedia).toHaveBeenCalledOnce();
+  });
+
+  it('is forgotten when it was the remembered one', async () => {
+    localStorage.setItem(CAMERA_KEY, 'broken');
+    const broken = fakeStream('broken');
+    getUserMedia.mockResolvedValueOnce(broken.stream).mockResolvedValue(fakeStream('main').stream);
+    enumerateDevices.mockResolvedValue([
+      camera('broken', 'environment', 4608),
+      camera('main', 'environment', 4608),
+    ]);
+    readerAnswering();
+    renderScanner();
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    expect(camerasAskedFor()[0]).toMatchObject({ deviceId: { exact: 'broken' } });
+
+    broken.track.readyState = 'ended';
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    expect(localStorage.getItem(CAMERA_KEY)).toBeNull();
+  });
+});
+
+describe('the camera the scanner moved to', () => {
+  const CAMERA_KEY = 'arsu.scanner-camera';
+  /** Time runs a second per look at the clock, so a camera proves itself at once. */
+  function fastClock() {
+    let clock = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => (clock += 1000));
+  }
+
+  it('is remembered by name once it keeps working, and opened first next time', async () => {
+    fastClock();
+    const broken = fakeStream('broken');
+    getUserMedia.mockResolvedValueOnce(broken.stream).mockResolvedValue(fakeStream('main').stream);
+    enumerateDevices.mockResolvedValue([
+      camera('broken', 'environment', 4608),
+      camera('main', 'environment', 4608),
+    ]);
+    readerAnswering();
+    const { close, reopen } = renderScanner();
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    broken.track.readyState = 'ended';
+
+    await waitFor(() => expect(localStorage.getItem(CAMERA_KEY)).toBe('main'));
+    close();
+    reopen();
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(3));
+    expect(camerasAskedFor()[2]).toMatchObject({ deviceId: { exact: 'main' } });
+  });
+
+  it("is not needed when the system's own camera works: nothing is remembered", async () => {
+    fastClock();
+    getUserMedia.mockResolvedValue(fakeStream('main').stream);
+    const { read } = readerAnswering();
+    renderScanner();
+
+    await waitFor(() => expect(read.mock.calls.length).toBeGreaterThan(3));
+    expect(localStorage.getItem(CAMERA_KEY)).toBeNull();
+  });
+
+  it('is found by name when the system hides its cameras until one is allowed', async () => {
+    localStorage.setItem(CAMERA_KEY, 'main');
+    const allowing = fakeStream('front');
+    getUserMedia
+      .mockResolvedValueOnce(allowing.stream)
+      .mockResolvedValue(fakeStream('main').stream);
+    enumerateDevices
+      .mockResolvedValueOnce([{ kind: 'videoinput', deviceId: '', label: '' }])
+      .mockResolvedValue([camera('front', 'user', 4608), camera('main', 'environment', 4608)]);
+    readerAnswering();
+    renderScanner();
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    expect(allowing.track.stop).toHaveBeenCalled();
+    expect(camerasAskedFor()[1]).toMatchObject({ deviceId: { exact: 'main' } });
+  });
+
+  it("gives way to the system's camera when it is no longer listed, and is forgotten", async () => {
+    localStorage.setItem(CAMERA_KEY, 'unplugged');
+    getUserMedia.mockResolvedValue(fakeStream('main').stream);
+    enumerateDevices.mockResolvedValue([camera('main', 'environment', 4608)]);
+    readerAnswering();
+    renderScanner();
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    expect(camerasAskedFor()[0]).toMatchObject({ facingMode: { ideal: 'environment' } });
+    expect(localStorage.getItem(CAMERA_KEY)).toBeNull();
+  });
+
+  it('gives way to another camera when it will not open, and is forgotten', async () => {
+    localStorage.setItem(CAMERA_KEY, 'busy');
+    getUserMedia
+      .mockRejectedValueOnce(new DOMException('in use', 'NotReadableError'))
+      .mockResolvedValue(fakeStream('main').stream);
+    enumerateDevices.mockResolvedValue([
+      camera('busy', 'environment', 4608),
+      camera('main', 'environment', 4608),
+    ]);
+    readerAnswering();
+    renderScanner();
+
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledTimes(2));
+    expect(camerasAskedFor()[1]).toMatchObject({ deviceId: { exact: 'main' } });
+    expect(localStorage.getItem(CAMERA_KEY)).toBeNull();
+    expect(screen.getByText('Point the camera at the QR code.')).toBeTruthy();
+  });
+});
+
+describe('the cameras to try', () => {
+  it('puts rear cameras first, the sharpest first, and leaves out those that failed', async () => {
+    enumerateDevices.mockResolvedValue([
+      camera('front', 'user', 4608),
+      camera('failed', 'environment', 4608),
+      camera('second', 'environment', 2592),
+      camera('main', 'environment', 4608),
+      { kind: 'audioinput', deviceId: 'microphone', label: 'microphone' },
+    ]);
+
+    expect(await camerasToTry(new Set(['failed']))).toEqual(['main', 'second', 'front']);
+  });
+
+  it('keeps the system order for cameras that say nothing of themselves', async () => {
+    enumerateDevices.mockResolvedValue([
+      { kind: 'videoinput', deviceId: 'first', label: '' },
+      { kind: 'videoinput', deviceId: '', label: '' },
+      { kind: 'videoinput', deviceId: 'second', label: '' },
+    ]);
+
+    expect(await camerasToTry(new Set())).toEqual(['first', 'second']);
   });
 });
